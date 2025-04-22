@@ -36,6 +36,7 @@ const generateMockAssets = (count: number): Asset[] => {
       shares: Math.floor(Math.random() * 50000),
       master_id: null,
       version_no: 1,
+      fileName: `image-${i}.jpg`,
       thumbnailPath: `data:image/svg+xml;base64,...` // Use placeholder logic if needed
     });
   }
