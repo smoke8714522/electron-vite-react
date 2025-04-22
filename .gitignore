@@ -24,6 +24,11 @@ release
 *.sln
 *.sw?
 
+# Custom Excludes
+vault/
+.cursor/rules
+cache/
+
 #lockfile
 package-lock.json
 pnpm-lock.yaml
