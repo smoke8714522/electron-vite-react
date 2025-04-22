@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import {
   Box,
   Button,
@@ -28,15 +28,21 @@ import {
   useDeleteAsset,
 } from '../../hooks/useApi';
 import type { ApiResponse, Asset } from '../../types/api';
+import type { ViewMode } from '../../pages/LibraryView';
 
 type SortableField = 'createdAt' | 'year' | 'advertiser' | 'niche' | 'shares';
 
 interface LibraryToolbarProps {
+  view: ViewMode;
+  onViewChange: (newView: ViewMode) => void;
   onRefreshNeeded: () => Promise<ApiResponse<Asset[] | undefined>>;
 }
 
-const LibraryToolbar: React.FC<LibraryToolbarProps> = ({ onRefreshNeeded }) => {
-  const [view, setView] = useState('grid');
+const LibraryToolbar: React.FC<LibraryToolbarProps> = ({ 
+  view, 
+  onViewChange, 
+  onRefreshNeeded 
+}) => {
   const sortBy = useSortBy();
   const selectedIds = useSelection();
   const selectionCount = useSelectionCount();
@@ -46,9 +52,9 @@ const LibraryToolbar: React.FC<LibraryToolbarProps> = ({ onRefreshNeeded }) => {
 
   const handleViewChange = useCallback((_event: React.MouseEvent<HTMLElement>, newView: string | null) => {
     if (newView !== null) {
-      setView(newView);
+      onViewChange(newView as ViewMode);
     }
-  }, []);
+  }, [onViewChange]);
 
   const handleSortChange = useCallback((event: SelectChangeEvent<string>) => {
     setSortBy(event.target.value as SortableField);
@@ -112,6 +118,7 @@ const LibraryToolbar: React.FC<LibraryToolbarProps> = ({ onRefreshNeeded }) => {
               size="small" 
               startIcon={<EditIcon />} 
               disabled={actionsDisabled}
+              onClick={() => console.log('Trigger Bulk Edit Modal')}
             >
               Edit Tags
             </Button>

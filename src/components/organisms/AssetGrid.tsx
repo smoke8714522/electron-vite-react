@@ -1,18 +1,25 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, CSSProperties } from 'react';
 import {
   Box,
-  Grid,
   // CircularProgress, // TODO: Unused import (eslint: @typescript-eslint/no-unused-vars)
   Alert,
   Typography,
   Skeleton
 } from '@mui/material';
+import AutoSizer from 'react-virtualized-auto-sizer';
+import { FixedSizeGrid } from 'react-window';
 import AssetCard from '../molecules/AssetCard';
 import {
   useSelection,
   useAppActions
 } from '../../store/filterStore';
 import type { Asset } from '../../types/api'; // Need Asset type for props
+
+// Type for the itemData prop passed to FixedSizeGrid
+interface GridItemData {
+  items: Asset[];
+  columnCount: number;
+}
 
 // Define props interface
 interface AssetGridProps {
@@ -21,60 +28,129 @@ interface AssetGridProps {
   error: string | null;
 }
 
+const CARD_WIDTH = 180; // Includes spacing
+const CARD_HEIGHT = 240; // Includes spacing
+
 const AssetGrid: React.FC<AssetGridProps> = ({ assets, loading, error }) => {
   const selectedIds = useSelection();
   const { toggleSelected, setSelected } = useAppActions();
 
-  const handleAssetClick = useCallback((assetId: number, event: React.MouseEvent) => {
-    if (event.ctrlKey || event.metaKey) {
-      toggleSelected(assetId);
-    } else {
-      setSelected([assetId]); 
-    }
-  }, [toggleSelected, setSelected]);
+  const handleAssetClick = useCallback(
+    (assetId: number, event: React.MouseEvent) => {
+      if (event.ctrlKey || event.metaKey) {
+        toggleSelected(assetId);
+      } else {
+        setSelected([assetId]);
+        // TODO: Handle single click for opening Preview Modal
+        console.log(`Single click on asset ${assetId}`);
+      }
+    },
+    [toggleSelected, setSelected],
+  );
 
+  // --- Grid Cell Renderer ---
+  const Cell = useCallback(
+    ({ columnIndex, rowIndex, style, data }: {
+      columnIndex: number;
+      rowIndex: number;
+      style: CSSProperties;
+      data: GridItemData;
+    }) => {
+      const { items, columnCount } = data;
+      const index = rowIndex * columnCount + columnIndex;
+
+      if (index >= items.length) {
+        return null; // Render nothing if index is out of bounds
+      }
+
+      const asset = items[index];
+      if (!asset) {
+        return null; // Should not happen, but good practice
+      }
+
+      return (
+        <Box
+          style={style}
+          sx={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'flex-start',
+            padding: theme => theme.spacing(1),
+          }}
+        >
+          <AssetCard
+            asset={asset}
+            isSelected={selectedIds.has(asset.id)}
+            onClick={event => handleAssetClick(asset.id, event)}
+            // --- Drag and Drop Props (Assume AssetCard handles these) ---
+            // onDropTarget={(draggedId) => handleGroupDrop(draggedId, asset.id)} // Example
+            // isDragging={/* logic */} // Example
+            // ...other drag/drop props
+          />
+        </Box>
+      );
+    },
+    [selectedIds, handleAssetClick],
+  );
+
+  // --- Loading State ---
   if (loading) {
     return (
-      <Box sx={{ flexGrow: 1, p: 2, overflowY: 'auto', height: '100%' }}>
-        <Grid container spacing={2}>
-          {Array.from({ length: 12 }).map((_, index) => (
-            <Grid item key={`skeleton-${index}`} xs={12} sm={6} md={4} lg={2}>
-              <Skeleton variant="rectangular" height={140} sx={{ mb: 1 }}/>
-              <Skeleton variant="text" sx={{ fontSize: '1rem' }} />
-              <Skeleton variant="text" sx={{ fontSize: '0.8rem' }} />
-            </Grid>
-          ))}
-        </Grid>
+      <Box sx={{ flexGrow: 1, p: 2, height: '100%', display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+        {Array.from({ length: 8 }).map((_, index) => (
+          <Box key={`skeleton-${index}`} sx={{ width: CARD_WIDTH - 16, height: CARD_HEIGHT - 16 }}>
+            <Skeleton variant="rectangular" height={140} sx={{ mb: 1 }} />
+            <Skeleton variant="text" sx={{ fontSize: '1rem' }} />
+            <Skeleton variant="text" sx={{ fontSize: '0.8rem' }} />
+          </Box>
+        ))}
       </Box>
     );
   }
 
+  // --- Error State ---
   if (error) {
-    return <Alert severity="error" sx={{ m: 2 }}>Error fetching assets: {error}</Alert>;
+    return (
+      <Alert severity="error" sx={{ m: 2 }}>
+        Error fetching assets: {error}
+      </Alert>
+    );
   }
 
+  // --- Empty State ---
   if (!assets || assets.length === 0) {
     return (
-      <Box sx={{ textAlign: 'center', p: 4, width: '100%' }}>
+      <Box sx={{ textAlign: 'center', p: 4, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
         <Typography variant="h6">No assets found.</Typography>
         <Typography>Try adjusting filters or use the Bulk Import button.</Typography>
       </Box>
     );
   }
 
+  // --- Virtualized Grid ---
   return (
-    <Box sx={{ flexGrow: 1, p: 2, overflowY: 'auto', height: '100%' }}>
-      <Grid container spacing={2}>
-        {assets.map((asset) => (
-          <Grid item key={asset.id} xs={12} sm={6} md={4} lg={2}>
-            <AssetCard 
-              asset={asset}
-              isSelected={selectedIds.has(asset.id)}
-              onClick={(event) => handleAssetClick(asset.id, event)}
-            />
-          </Grid>
-        ))}
-      </Grid>
+    <Box sx={{ flexGrow: 1, height: '100%', width: '100%', overflow: 'hidden' }}>
+      <AutoSizer>
+        {({ height, width }) => {
+          const columnCount = Math.max(1, Math.floor(width / CARD_WIDTH));
+          const rowCount = Math.ceil(assets.length / columnCount);
+
+          return (
+            <FixedSizeGrid
+              columnCount={columnCount}
+              columnWidth={CARD_WIDTH}
+              height={height}
+              rowCount={rowCount}
+              rowHeight={CARD_HEIGHT}
+              width={width}
+              itemData={{ items: assets, columnCount }}
+              style={{ overflowX: 'hidden' }}
+            >
+              {Cell}
+            </FixedSizeGrid>
+          );
+        }}
+      </AutoSizer>
     </Box>
   );
 };
