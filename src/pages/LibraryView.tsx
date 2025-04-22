@@ -1,10 +1,25 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Box } from '@mui/material';
 import FilterSidebar from '../components/organisms/FilterSidebar';
 import LibraryToolbar from '../components/organisms/LibraryToolbar';
 import AssetGrid from '../components/organisms/AssetGrid';
+import { useGetAssets } from '../hooks/useApi';
+import { useAssetQuery } from '../store/filterStore';
 
 const LibraryView: React.FC = () => {
+  const assetQuery = useAssetQuery();
+  const { 
+    call: fetchAssets, 
+    loading, 
+    error, 
+    data: assets 
+  } = useGetAssets();
+
+  useEffect(() => {
+    console.log('LibraryView: Asset query changed, fetching assets:', assetQuery);
+    fetchAssets(assetQuery);
+  }, [assetQuery, fetchAssets]);
+
   return (
     <Box sx={{ display: 'flex', flexGrow: 1, width: '100%' }}>
       <FilterSidebar />
@@ -18,8 +33,12 @@ const LibraryView: React.FC = () => {
           overflow: 'hidden',
         }}
       >
-        <LibraryToolbar />
-        <AssetGrid />
+        <LibraryToolbar onRefreshNeeded={fetchAssets} />
+        <AssetGrid 
+          assets={assets} 
+          loading={loading} 
+          error={error} 
+        />
       </Box>
     </Box>
   );

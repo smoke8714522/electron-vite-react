@@ -11,13 +11,24 @@ import {
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import ClearIcon from '@mui/icons-material/Clear';
-import { useFilters, useFilterActions } from '../../store/filterStore';
+import {
+  useYearFilter,
+  useAdvertiserFilter,
+  useNicheFilter,
+  useSharesRangeFilter,
+  useSearchTermFilter,
+  useAppActions,
+} from '../../store/filterStore';
 
 const SidebarFilters: React.FC = () => {
-  const filters = useFilters();
-  const { setYear, setAdvertiser, setNiche, setSharesRange, setSearchTerm } = useFilterActions();
+  const year = useYearFilter();
+  const advertiser = useAdvertiserFilter();
+  const niche = useNicheFilter();
+  const sharesRange = useSharesRangeFilter();
+  const searchTerm = useSearchTermFilter();
 
-  // Assuming a max value for shares slider, might need dynamic calculation later
+  const { setYear, setAdvertiser, setNiche, setSharesRange, setSearchTerm } = useAppActions();
+
   const MAX_SHARES = 100000;
 
   const handleSharesChange = (_event: Event, newValue: number | number[]) => {
@@ -41,7 +52,7 @@ const SidebarFilters: React.FC = () => {
           variant="outlined"
           fullWidth
           size="small"
-          value={filters.searchTerm || ''}
+          value={searchTerm || ''}
           onChange={(e) => setSearchTerm(e.target.value)}
           sx={{ mb: 2 }}
           InputProps={{
@@ -50,7 +61,7 @@ const SidebarFilters: React.FC = () => {
                 <SearchIcon />
               </InputAdornment>
             ),
-            endAdornment: filters.searchTerm ? (
+            endAdornment: searchTerm ? (
               <InputAdornment position="end">
                 <IconButton onClick={handleSearchClear} edge="end" size="small">
                   <ClearIcon />
@@ -66,7 +77,7 @@ const SidebarFilters: React.FC = () => {
           type="number"
           fullWidth
           size="small"
-          value={filters.year || ''}
+          value={year || ''}
           onChange={(e) => setYear(e.target.value ? parseInt(e.target.value, 10) : undefined)}
           sx={{ mb: 2 }}
         />
@@ -76,7 +87,7 @@ const SidebarFilters: React.FC = () => {
           variant="outlined"
           fullWidth
           size="small"
-          value={filters.advertiser || ''}
+          value={advertiser || ''}
           onChange={(e) => setAdvertiser(e.target.value)}
           sx={{ mb: 2 }}
         />
@@ -86,14 +97,14 @@ const SidebarFilters: React.FC = () => {
           variant="outlined"
           fullWidth
           size="small"
-          value={filters.niche || ''}
+          value={niche || ''}
           onChange={(e) => setNiche(e.target.value)}
           sx={{ mb: 2 }}
         />
 
         <Typography gutterBottom>Shares</Typography>
         <Slider
-          value={filters.sharesRange}
+          value={sharesRange}
           onChange={handleSharesChange}
           valueLabelDisplay="auto"
           min={0}
@@ -102,8 +113,8 @@ const SidebarFilters: React.FC = () => {
           sx={{ mx: 1, width: 'calc(100% - 16px)' }}
         />
          <Box sx={{ display: 'flex', justifyContent: 'space-between', px: 1, mb: 2 }}>
-            <Typography variant="caption">{filters.sharesRange[0]}</Typography>
-            <Typography variant="caption">{filters.sharesRange[1]}</Typography>
+            <Typography variant="caption">{sharesRange[0]}</Typography>
+            <Typography variant="caption">{sharesRange[1]}</Typography>
           </Box>
 
       </Box>

@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import {
   Box,
   Grid,
@@ -9,23 +9,21 @@ import {
 } from '@mui/material';
 import AssetCard from '../molecules/AssetCard';
 import {
-  useAssetQuery,
   useSelection,
   useAppActions
 } from '../../store/filterStore';
-import { useGetAssets } from '../../hooks/useApi';
-// import { Asset } from '../../types/api'; // TODO: Unused import (eslint: @typescript-eslint/no-unused-vars) - Keep for type safety checks?
+import type { Asset } from '../../types/api'; // Need Asset type for props
 
-const AssetGrid: React.FC = () => {
-  const assetQuery = useAssetQuery(); 
+// Define props interface
+interface AssetGridProps {
+  assets: Asset[] | null | undefined;
+  loading: boolean;
+  error: string | null;
+}
+
+const AssetGrid: React.FC<AssetGridProps> = ({ assets, loading, error }) => {
   const selectedIds = useSelection();
   const { toggleSelected, setSelected } = useAppActions();
-  const { call: fetchAssets, loading, error, data: assets } = useGetAssets();
-
-  useEffect(() => {
-    console.log('Asset query changed, fetching assets:', assetQuery);
-    fetchAssets(assetQuery);
-  }, [assetQuery, fetchAssets]);
 
   const handleAssetClick = useCallback((assetId: number, event: React.MouseEvent) => {
     if (event.ctrlKey || event.metaKey) {

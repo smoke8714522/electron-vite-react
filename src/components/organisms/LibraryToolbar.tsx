@@ -25,12 +25,17 @@ import {
 } from '../../store/filterStore';
 import {
   useBulkImportAssets,
-  useDeleteAsset
+  useDeleteAsset,
 } from '../../hooks/useApi';
+import type { ApiResponse, Asset } from '../../types/api';
 
 type SortableField = 'createdAt' | 'year' | 'advertiser' | 'niche' | 'shares';
 
-const LibraryToolbar: React.FC = () => {
+interface LibraryToolbarProps {
+  onRefreshNeeded: () => Promise<ApiResponse<Asset[] | undefined>>;
+}
+
+const LibraryToolbar: React.FC<LibraryToolbarProps> = ({ onRefreshNeeded }) => {
   const [view, setView] = useState('grid');
   const sortBy = useSortBy();
   const selectedIds = useSelection();
@@ -50,8 +55,14 @@ const LibraryToolbar: React.FC = () => {
   }, [setSortBy]);
 
   const handleBulkImportClick = useCallback(async () => {
-    await callBulkImport();
-  }, [callBulkImport]);
+    const result = await callBulkImport();
+    if (result && result.success) {
+      console.log('Bulk import successful, triggering refresh...');
+      await onRefreshNeeded();
+    } else {
+      console.error('Bulk import failed or returned unexpected result:', result);
+    }
+  }, [callBulkImport, onRefreshNeeded]);
 
   const handleDeleteClick = useCallback(async () => {
     if (selectionCount === 0) return;
@@ -67,8 +78,13 @@ const LibraryToolbar: React.FC = () => {
     const failures = results.length - successes;
     console.log(`Deleted ${successes} assets, ${failures} failures.`);
     
-    clearSelection(); 
-  }, [selectedIds, selectionCount, callDeleteAsset, clearSelection]);
+    clearSelection();
+    
+    if (successes > 0) {
+        console.log('Deletion successful, triggering refresh...');
+        await onRefreshNeeded();
+    }
+  }, [selectedIds, selectionCount, callDeleteAsset, clearSelection, onRefreshNeeded]);
 
   const actionsDisabled = selectionCount === 0;
   const deleteInProgress = deleting;

@@ -28,6 +28,7 @@ release
 vault/
 .cursor/rules
 cache/
+data/
 
 #lockfile
 package-lock.json
