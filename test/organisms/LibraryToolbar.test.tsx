@@ -9,15 +9,6 @@ import type { ViewMode } from '../../src/pages/LibraryView'; // Assuming type is
 
 // --- Mocks ---
 
-// Define mock functions FIRST
-const mockSetSortBy = vi.fn();
-const mockClearSelection = vi.fn();
-const mockUseSortBy = vi.fn(() => 'createdAt');
-const mockUseSelection = vi.fn(() => new Set<number>());
-const mockUseSelectionCount = vi.fn(() => 0);
-const mockCallBulkImport = vi.fn();
-const mockCallDeleteAsset = vi.fn();
-
 // Mock ActionButton atom FIRST
 interface MockActionButtonProps {
   label: string;
@@ -34,29 +25,38 @@ vi.mock('../../src/components/atoms/ActionButton', () => ({
 }));
 
 // Then Mock the store, referencing the functions above
-vi.mock('../../src/store/filterStore', () => ({
-  useSortBy: mockUseSortBy,
-  useSelection: mockUseSelection,
-  useSelectionCount: mockUseSelectionCount,
-  useAppActions: () => ({
-    setSortBy: mockSetSortBy,
-    clearSelection: mockClearSelection,
-  }),
-}));
+vi.mock('../../src/store/filterStore', () => {
+  const useSortBy = vi.fn(() => 'createdAt');
+  const useSelection = vi.fn(() => new Set<number>());
+  const useSelectionCount = vi.fn(() => 0);
+  const setSortBy = vi.fn();
+  const clearSelection = vi.fn();
+  const useAppActions = () => ({ setSortBy, clearSelection });
+  return { useSortBy, useSelection, useSelectionCount, useAppActions };
+});
 
 // Then Mock API hooks, referencing the functions above
-vi.mock('../../src/hooks/useApi', () => ({
-  useBulkImportAssets: () => ({
-    call: mockCallBulkImport,
-    loading: false,
-  }),
-  useDeleteAsset: () => ({
-    call: mockCallDeleteAsset,
-    loading: false,
-  }),
-}));
+vi.mock('../../src/hooks/useApi', () => {
+  const callBulkImport = vi.fn();
+  const callDeleteAsset = vi.fn();
+  const useBulkImportAssets = () => ({ call: callBulkImport, loading: false });
+  const useDeleteAsset = () => ({ call: callDeleteAsset, loading: false });
+  return { useBulkImportAssets, useDeleteAsset };
+});
 
 // --- Props Mocks ---
+import * as filterStore from '../../src/store/filterStore';
+import * as apiHooks from '../../src/hooks/useApi';
+
+const { useSortBy, useSelection, useSelectionCount, useAppActions } = filterStore;
+const { setSortBy: mockSetSortBy, clearSelection: mockClearSelection } = useAppActions();
+const mockUseSortBy = vi.mocked(useSortBy);
+const mockUseSelection = vi.mocked(useSelection);
+const mockUseSelectionCount = vi.mocked(useSelectionCount);
+
+const { call: mockCallBulkImport } = apiHooks.useBulkImportAssets();
+const { call: mockCallDeleteAsset } = apiHooks.useDeleteAsset();
+
 const mockOnViewChange = vi.fn();
 const mockOnRefreshNeeded = vi.fn().mockResolvedValue({ success: true }); // Mock refresh
 
