@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { Card, CardContent, CardMedia, Typography, Checkbox } from '@mui/material';
 import { Asset } from '../../types/api';
+import { useAddToGroup } from '../../hooks/useApi';
 
 // Function to get thumbnail URL (copied from AssetCard_Old.tsx logic)
 const getThumbnailUrl = (asset: Asset): string => {
@@ -30,57 +31,92 @@ interface AssetCardProps {
 }
 
 const AssetCard: React.FC<AssetCardProps> = ({ asset, isSelected, onClick }) => {
+  const { call: addToGroup, loading: isGrouping } = useAddToGroup();
+
+  const handleDragStart = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    event.dataTransfer.setData('application/advault-asset-id', String(asset.id));
+    event.dataTransfer.effectAllowed = 'move';
+  }, [asset.id]);
+
+  const handleDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const handleDrop = useCallback(async (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const sourceIdStr = event.dataTransfer.getData('application/advault-asset-id');
+    const targetId = asset.id;
+
+    if (sourceIdStr && targetId) {
+      const sourceId = parseInt(sourceIdStr, 10);
+      if (sourceId !== targetId && !isNaN(sourceId)) {
+        console.log(`Attempting to group asset ${sourceId} under ${targetId}`);
+        try {
+          const result = await addToGroup({ sourceId, targetId });
+          if (result.success) {
+            console.log(`Successfully grouped asset ${sourceId} under ${targetId}`);
+          } else {
+            console.error('Failed to group assets:', result.error);
+          }
+        } catch (error) {
+          console.error('Error calling addToGroup:', error);
+        }
+      }
+    }
+  }, [asset.id, addToGroup]);
+
   const thumbnailUrl = getThumbnailUrl(asset);
   const displayFilename = asset.path?.split(/[\\/]/).pop() || 'Unknown File';
 
   return (
-    // Attach onClick handler, add border style for selection
     <Card 
       onClick={onClick} 
+      draggable={true}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
       sx={{ 
         position: 'relative', 
-        cursor: 'pointer',
-        border: isSelected ? '2px solid' : '2px solid transparent', // Highlight border
+        border: isSelected ? '2px solid' : '2px solid transparent',
         borderColor: isSelected ? 'primary.main' : 'transparent',
-        height: '100%', // Ensure card takes full grid item height
+        height: '100%',
         display: 'flex', 
-        flexDirection: 'column'
+        flexDirection: 'column',
+        opacity: isGrouping ? 0.5 : 1,
+        cursor: 'grab',
       }}
     >
-      {/* Selection Checkbox Overlay */}
       {isSelected && (
          <Checkbox 
             checked={isSelected}
             size="small"
             sx={{ position: 'absolute', top: 0, left: 0, zIndex: 1, p: 0.5, backgroundColor: 'rgba(255,255,255,0.7)' }}
-            // Prevent click on checkbox itself from propagating to card onClick
             onClick={(e) => e.stopPropagation()} 
-            readOnly // Selection handled by card click
+            readOnly
           />
       )}
 
       <CardMedia
         component="img"
         height="140"
-        image={thumbnailUrl} // Use actual thumbnail path
+        image={thumbnailUrl}
         alt={`Thumbnail for ${displayFilename}`}
-        sx={{ backgroundColor: 'grey.200', objectFit: 'contain' }}
-        // Optional: Add onError handler for debugging
+        sx={{
+          backgroundColor: 'grey.200',
+          objectFit: 'cover',
+          objectPosition: 'top'
+        }}
         onError={(e) => console.error(`Failed to load image: ${thumbnailUrl}`, e)}
+        onDragStart={(e) => e.preventDefault()}
       />
-      <CardContent sx={{ py: 1, '&:last-child': { pb: 1 }, flexGrow: 1 }}> {/* Added flexGrow */}
-        {/* Display actual filename */}
+      <CardContent sx={{ py: 1, '&:last-child': { pb: 1 }, flexGrow: 1 }}>
         <Typography gutterBottom variant="body2" component="div" noWrap title={displayFilename}>
           {displayFilename}
         </Typography>
-        {/* Display actual metadata */}
         <Typography variant="caption" color="text.secondary" noWrap>
           {asset.year || 'N/A'} | {asset.advertiser || '-'} | {asset.niche || '-'}
         </Typography>
-        {/* Placeholder for Version Badge */}
-        {/* <Box sx={{ position: 'absolute', bottom: 8, right: 8, zIndex: 1 }}>
-          Version Badge 
-        </Box> */}
       </CardContent>
     </Card>
   );

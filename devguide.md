@@ -44,7 +44,9 @@ This document outlines the setup and common tasks for developing the AdVault2 ap
 | `delete-asset`       | `DeleteAssetPayload`                 | `{ success, error? }`                             | Delete asset DB record (file deletion separate)     |
 | `bulk-import-assets` | _none_ (opens file dialog)           | `{ success, data?: BulkImportResult, error? }`    | Import multiple files, create records, gen thumbs |
 | `get-versions`       | `{ masterId: number }`               | `{ success, data?: Asset[], error? }`             | Fetch all versions for a master asset             |
-| `add-to-group`       | `{ sourceId: number, targetId: number }` | `{ success, error? }`                             | Set source asset's master_id to target asset's id | 
+| `add-to-group`       | `{ sourceId: number, targetId: number }` | `{ success, error? }`                             | Set source asset's master_id to target asset's id |
+| `change-view`        | `{ view: 'library' \| 'settings' }`     | _none_ (event listener)                           | Sent by main menu to renderer                     |
+| `on-view-change`     | _(callback function)_                | _none_ (event listener registration)             | Renderer registers callback for view changes      |
 | _…other channels…_   |                                      |                                                   |                                                     |
 
 *Payload/Response types are defined in `src/types/api.ts`.*
@@ -83,6 +85,8 @@ This document outlines the setup and common tasks for developing the AdVault2 ap
 
 ## 5. How to Add New Features (Example Flow)
 
+This section outlines common patterns for adding features involving backend communication, UI components, and state management.
+
 1.  **Domain Logic & Unit Test (Optional but Recommended)**
     - Add pure TS functions for core logic if complex (e.g., in `/lib/domain` or service files like `/lib/thumbnailService.ts`).
     - Write unit tests (`*.test.ts`) using Vitest/Jest.
@@ -96,101 +100,230 @@ This document outlines the setup and common tasks for developing the AdVault2 ap
 
 3.  **Expose via Preload Script**
     - Edit the preload script (e.g., `electron/preload/index.ts`).
-    - Add the new method to the `api` object exposed via `contextBridge.exposeInMainWorld`: 
+    - Add the new method to the `api` object exposed via `contextBridge.exposeInMainWorld`:
       ```ts
       const api: Partial<IElectronAPI> = {
         // ... other methods
         myNewFeature: (payload) => ipcRenderer.invoke('my-new-feature', payload),
         bulkImportAssets: () => ipcRenderer.invoke('bulk-import-assets'),
+        addToGroup: (payload) => ipcRenderer.invoke('add-to-group', payload), // Example
+        // Listener example (see App.tsx for usage)
+        onViewChange: (callback) => {
+          const channel = 'change-view';
+          // Remove previous listener before adding a new one
+          ipcRenderer.removeAllListeners(channel);
+          ipcRenderer.on(channel, (_event, ...args) => callback(...args));
+          // Return cleanup function to be called in useEffect cleanup
+          return () => ipcRenderer.removeAllListeners(channel);
+        }
       };
       ```
     - Ensure the method signature matches the expected usage in the renderer.
 
 4.  **Define Types**
     - Update `src/types/api.ts`:
-        - Add specific `Payload` and `ResponseData` interfaces if needed.
-        - Define the `ApiResponse` structure (e.g., `MyNewFeatureResponse = ApiResponse<MyNewFeatureData>`).
+        - Add specific `Payload` and `ResponseData` interfaces if needed (e.g., `AddToGroupPayload`).
+        - Define the `ApiResponse` structure (e.g., `AddToGroupResponse = ApiResponse<null>`).
         - Add the new method signature to the `IElectronAPI` interface.
 
 5.  **Renderer Hook (`useApi.ts`)**
     - Edit `src/hooks/useApi.ts`.
-    - Ensure the API call function (e.g., `myNewFeatureApi`) is defined stably outside the hook using `safeApiCall`.
-    - Create a specific hook (e.g., `useMyNewFeature`) using the generic `useAsyncCall` hook, passing the stable API function reference.
+    - Define a stable API call function (e.g., `addToGroupApi`) outside the hook using `safeApiCall`.
+    - Create a specific hook (e.g., `useAddToGroup`) using the generic `useAsyncCall` hook, passing the stable API function reference.
       ```ts
       // src/hooks/useApi.ts
-      // ... imports ...
+      import { safeApiCall, useAsyncCall } from './useApiCore'; // Assuming core logic is separated
+      import { 
+        Asset, 
+        AssetQuery, 
+        BulkImportResult, 
+        CreateAssetPayload, 
+        UpdateAssetPayload, 
+        DeleteAssetPayload,
+        AddToGroupPayload,
+        // Response types (often just ApiResponse<DataType>)
+        GetAssetsResponse,
+        CreateAssetResponse,
+        UpdateAssetResponse,
+        DeleteAssetResponse,
+        BulkImportResponse,
+        GetVersionsResponse,
+        AddToGroupResponse,
+      } from '../types/api';
 
       // Define stable API call wrappers
-      const myNewFeatureApi = safeApiCall<MyPayload, MyResponseData>(window.api.myNewFeature);
+      const getAssetsApi = safeApiCall<AssetQuery | undefined, Asset[]>(window.api.getAssets);
+      const addToGroupApi = safeApiCall<AddToGroupPayload, null>(window.api.addToGroup);
+      // ... other API wrappers ...
 
-      // Generic hook (remains the same)
-      function useAsyncCall<TResponseData, TPayload>(...) { /* ... */ }
-
-      // Specific hook
-      export function useMyNewFeature() {
-        return useAsyncCall(myNewFeatureApi);
+      // Specific hooks
+      export function useGetAssets() {
+        return useAsyncCall(getAssetsApi);
       }
+
+      export function useAddToGroup() {
+        return useAsyncCall(addToGroupApi);
+      }
+      // ... other hooks ...
       ```
 
 6.  **UI Component / Page**
-    - Typically in a component within `/src/components/*` or a view within `/src/pages/*`.
-    - **Navigation between major views** (like Library, Settings) is handled via the **native Electron menu** (defined in `electron/main/index.ts`). The menu sends IPC messages (`change-view`) which are received in `src/App.tsx` to control which page component is rendered.
-    - **Import necessary state/actions** from the Zustand store (`src/store/filterStore.ts`) using selector hooks (e.g., `useAssetQuery`, `useSelection`, `useAppActions`) for features *within* a view.
-    - **Import necessary API hooks** from `src/hooks/useApi.ts` (e.g., `useGetAssets`, `useMyNewFeature`).
-    - Use `useEffect` to trigger data fetching based on state changes (e.g., filters from `useAssetQuery`).
-    - Connect UI elements (`Button`, `TextField`, etc.) to state values and action handlers (using `useCallback` for handlers passed as props).
+    - **General Structure:** Components in `/src/components/*`, views/pages in `/src/pages/*`.
+    - **Navigation:** Handled via native Electron menu (defined in `electron/main/index.ts`), which sends `change-view` IPC messages caught by `src/App.tsx` to switch the rendered page.
+    - **State Management:** Use Zustand store (`src/store/filterStore.ts`) via selector hooks (e.g., `useAssetQuery`, `useSelection`, `useAppActions`) for view-internal state like filters, sorting, and selection.
+    - **Data Fetching & Actions:** Use API hooks from `src/hooks/useApi.ts` (e.g., `useGetAssets`, `useAddToGroup`).
+    - **Triggering Fetches:** Use `useEffect` based on state changes (e.g., filters from `useAssetQuery`).
+    - **Event Handlers:** Connect UI elements (`Button`, `TextField`, etc.) to state values and action handlers (use `useCallback` for handlers passed as props).
 
-      ```tsx
-      // Example: src/pages/SomeFeaturePage.tsx
-      import React, { useEffect, useCallback } from 'react';
-      import { Box, Button, CircularProgress, Alert } from '@mui/material';
-      import { useMyNewFeature, useGetAssets } from '../hooks/useApi';
-      import { useAssetQuery, useAppActions } from '../store/filterStore';
+    **Example: Filtering & Displaying Assets with Virtualization**
+    ```tsx
+    // src/pages/LibraryView.tsx
+    import React, { useEffect } from 'react';
+    import { Box, CircularProgress, Alert } from '@mui/material';
+    import { FixedSizeGrid as Grid } from 'react-window'; // Import react-window
+    import AutoSizer from "react-virtualized-auto-sizer"; // Helper for dimensions
+    import { useGetAssets } from '../hooks/useApi';
+    import { useAssetQuery } from '../store/filterStore';
+    import AssetCard from '../components/molecules/AssetCard';
+    import FilterSidebar from '../components/organisms/FilterSidebar';
+    import LibraryToolbar from '../components/organisms/LibraryToolbar';
 
-      function SomeFeaturePage() {
-        // Zustand state/actions
-        const assetQuery = useAssetQuery();
-        const { clearSelection } = useAppActions();
-        
-        // API hooks
-        const { call: callMyFeature, loading: featureLoading, error: featureError } = useMyNewFeature();
-        const { call: fetchAssets, loading: assetsLoading, error: assetsError, data: assets } = useGetAssets();
+    const COLUMN_WIDTH = 220; // Example width including padding
+    const ROW_HEIGHT = 280;   // Example height including padding
 
-        // Fetch assets based on query from Zustand store
-        useEffect(() => {
-          fetchAssets(assetQuery);
-        }, [fetchAssets, assetQuery]);
+    function LibraryView() {
+      const assetQuery = useAssetQuery(); // Get current filters/sort from Zustand
+      const { call: fetchAssets, loading, error, data: assets = [] } = useGetAssets();
 
-        const handleFeatureClick = useCallback(async () => {
-          const result = await callMyFeature({ /* payload */ });
-          if (result.success) { 
-            // Handle success, maybe clear selection or refresh data
-            clearSelection();
-            fetchAssets(assetQuery); 
-          }
-        }, [callMyFeature, clearSelection, fetchAssets, assetQuery]);
+      // Fetch assets when query changes
+      useEffect(() => {
+        fetchAssets(assetQuery);
+      }, [fetchAssets, assetQuery]);
 
-        return (
-          <Box>
-            <Button onClick={handleFeatureClick} disabled={featureLoading || assetsLoading}>
-              {featureLoading ? <CircularProgress size={20}/> : 'Run My Feature'}
-            </Button>
-            {featureError && <Alert severity="error">{featureError}</Alert>}
-            {/* ... display assets or loading/error states ... */}
+      if (loading) return <CircularProgress />;
+      if (error) return <Alert severity="error">{error}</Alert>;
+
+      return (
+        <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)' }}> {/* Adjust for toolbar height */}
+          <FilterSidebar />
+          <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+            <LibraryToolbar />
+            <Box sx={{ flexGrow: 1, p: 2, overflow: 'hidden' }}> {/* Container for AutoSizer */}
+              <AutoSizer>{
+                ({ height, width }) => {
+                    const columnCount = Math.max(1, Math.floor(width / COLUMN_WIDTH));
+                    const rowCount = Math.ceil(assets.length / columnCount);
+
+                    return (
+                      <Grid
+                        columnCount={columnCount}
+                        columnWidth={COLUMN_WIDTH}
+                        height={height}
+                        rowCount={rowCount}
+                        rowHeight={ROW_HEIGHT}
+                        width={width}
+                        itemData={{ assets, columnCount }} // Pass data to Cell
+                        itemKey={({ columnIndex, rowIndex, data }) => { // Unique key
+                          const index = rowIndex * data.columnCount + columnIndex;
+                          return data.assets[index]?.id ?? `empty-${rowIndex}-${columnIndex}`;
+                        }}
+                      >
+                        {AssetGridCell} // Cell rendering component
+                      </Grid>
+                    );
+                }}
+              </AutoSizer>
+            </Box>
           </Box>
-        );
-      }
-      ```
+        </Box>
+      );
+    }
+
+    // Cell rendering component for react-window Grid
+    const AssetGridCell = ({ columnIndex, rowIndex, style, data }) => {
+      const { assets, columnCount } = data;
+      const index = rowIndex * columnCount + columnIndex;
+      if (index >= assets.length) return null; // Handle empty cells
+
+      const asset = assets[index];
+      // Add padding/styling via the style prop from react-window
+      return (
+        <div style={style}>
+          <Box sx={{ p: 1, height: '100%' }}> {/* Inner padding */}
+            <AssetCard asset={asset} /* ... other props ... */ />
+          </Box>
+        </div>
+      );
+    };
+    ```
+
+    **Example: Implementing Drag-and-Drop in `AssetCard.tsx`**
+    ```tsx
+    // src/components/molecules/AssetCard.tsx
+    import React, { useCallback } from 'react';
+    import { Card, /* ... */ } from '@mui/material';
+    import { useAddToGroup } from '../../hooks/useApi';
+    import { Asset } from '../../types/api';
+
+    interface AssetCardProps { asset: Asset; /* ... */ }
+
+    const AssetCard: React.FC<AssetCardProps> = ({ asset /* ... */ }) => {
+      const { call: addToGroup, loading: isGrouping } = useAddToGroup();
+
+      const handleDragStart = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+        event.dataTransfer.setData('application/advault-asset-id', String(asset.id));
+        event.dataTransfer.effectAllowed = 'move';
+      }, [asset.id]);
+
+      const handleDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+        event.preventDefault(); // Allow drop
+        event.dataTransfer.dropEffect = 'move';
+      }, []);
+
+      const handleDrop = useCallback(async (event: React.DragEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        const sourceIdStr = event.dataTransfer.getData('application/advault-asset-id');
+        const targetId = asset.id;
+
+        if (sourceIdStr && targetId) {
+          const sourceId = parseInt(sourceIdStr, 10);
+          if (sourceId !== targetId && !isNaN(sourceId)) {
+            console.log(`Grouping ${sourceId} -> ${targetId}`);
+            const result = await addToGroup({ sourceId, targetId }); // IPC Call
+            // Handle result/error...
+            if (result.success) {
+              // Maybe trigger asset refresh via Zustand action?
+            }
+          }
+        }
+      }, [asset.id, addToGroup]);
+
+      return (
+        <Card
+          draggable={true}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+          sx={{ /* ... styles, opacity: isGrouping ? 0.5 : 1 ... */ }}
+        >
+          {/* ... Card Content ... */}
+        </Card>
+      );
+    };
+    ```
 
 7.  **State Management (Zustand)**
-    - The main application state (filters, sorting, selection) resides in `/src/store/filterStore.ts` (`useAppStore`).
+    - The main application state (filters, sorting, selection, maybe view state) resides in `/src/store/filterStore.ts` (`useAppStore`).
     - Access state and actions using the provided selector hooks (e.g., `useAssetQuery`, `useSelection`, `useAppActions`, `useYearFilter`).
     - Use `shallow` comparison with `useStoreWithEqualityFn` for action selectors to prevent unnecessary re-renders.
-    - Add new state slices or actions to this central store as needed for global state.
+    - Add new state slices or actions to this central store as needed. For example, adding a Year filter:
+        - **Store Slice:** Add `year: number | null`, `setYear: (year: number | null) => void` to the store state and actions.
+        - **Selector Hook:** Create `useYearFilter` selector hook.
+        - **Sidebar UI:** Add a slider or input in `FilterSidebar.tsx`, connecting its value to `year` and `onChange` to `setYear`.
 
 8.  **Update Documentation (`devguide.md`, etc.)**
-    - Add new IPC channels (like `change-view` listener), hooks, or major state changes to this guide.
-    - Update `appflow.md`, `frontend.md`, `backend.md` if the overall flow or architecture changes significantly (e.g., reflect removal of AppBar navigation).
+    - Add new IPC channels, hooks, or major state changes to this guide.
+    - Update `appflow.md`, `frontend.md`, `backend.md` if the overall flow or architecture changes significantly.
 
 ## 6. Thumbnail Generation
 
