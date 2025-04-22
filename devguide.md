@@ -8,11 +8,11 @@ This document outlines the setup and common tasks for developing the AdVault2 ap
 /  
 ├── src/  
 │   ├── components/       # Reusable UI components (atoms, molecules, organisms)  
-│   ├── containers/       # Stateful views & data fetching  
+│   ├── containers/       # Stateful views & data fetching (May contain older views like LibraryView_Old)  
 │   ├── hooks/            # Custom React hooks (e.g. useAssets, useApi)  
 │   ├── store/            # Zustand stores  
 │   ├── theme/            # MUI theme overrides & tokens  
-│   ├── pages/            # Top‑level views (LibraryView, Settings)  
+│   ├── pages/            # Top‑level views (NewLibraryView, Settings)  
 │   ├── types/            # Shared TypeScript types (e.g., api.ts)  
 │   └── preload.ts        # Electron preload script (contextBridge)  
 ├── lib/                  # Electron main process code (IPC handlers, ThumbnailService)  
@@ -181,6 +181,7 @@ This document outlines the setup and common tasks for developing the AdVault2 ap
 8.  **Update Documentation (`devguide.md`)**
     - Add the new IPC channel to the **IPC API Reference** table.
     - Briefly mention the new hook/feature in relevant sections.
+    - Update folder layout descriptions if component locations change (e.g., moving views from `/containers` to `/pages`).
 
 ## 6. Thumbnail Generation
 
@@ -196,7 +197,7 @@ This document outlines the setup and common tasks for developing the AdVault2 ap
 
 - **Blank Screen:**
     - Check the **Renderer Process Console** (Ctrl+Shift+I or Cmd+Opt+I) for errors. Look for uncaught exceptions.
-    - Temporarily simplify the main React component (`src/App.tsx` or the view it renders like `LibraryView.tsx`) to render just static text. If that works, gradually add back complexity to find the failing part.
+    - Temporarily simplify the main React component (`src/App.tsx` or the view it renders like `NewLibraryView.tsx`) to render just static text. If that works, gradually add back complexity to find the failing part.
     - Ensure `src/main.tsx` correctly mounts the `App` component to the `#root` element in `index.html`.
     - Verify that the Vite dev server is running correctly and accessible.
     - Check for errors in the **Main Process Console** (the terminal where you ran `npm run dev`) related to window creation or loading.
