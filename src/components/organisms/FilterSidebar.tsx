@@ -102,12 +102,12 @@ const FilterSidebar = () => {
 
           <ListItem disablePadding>
             <ListItemIcon sx={{minWidth: 32}}><ShareIcon fontSize="small" /></ListItemIcon>
-            <ListItemText primary="Shares" />
+            <ListItemText primary="Shares" id="shares-slider-label" />
           </ListItem>
           <Slider
             value={sharesRange}
             onChange={handleSharesChange}
-            aria-labelledby="shares-slider"
+            aria-labelledby="shares-slider-label"
             valueLabelDisplay="auto"
             step={1000}
             marks

@@ -2,9 +2,10 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import ActionButton from '../../src/components/atoms/ActionButton';
 import SaveIcon from '@mui/icons-material/Save';
+import { vi } from 'vitest';
 
 describe('ActionButton', () => {
-  const mockOnClick = jest.fn();
+  const mockOnClick = vi.fn();
 
   beforeEach(() => {
     mockOnClick.mockClear();

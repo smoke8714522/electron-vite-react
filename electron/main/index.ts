@@ -101,7 +101,7 @@ const createMenu = (targetWindow: BrowserWindow) => {
 
 async function createWindow() {
   win = new BrowserWindow({
-    title: 'Main window',
+    title: 'AdVault',
     icon: path.join(process.env.VITE_PUBLIC, 'favicon.ico'),
     show: false,
     webPreferences: {

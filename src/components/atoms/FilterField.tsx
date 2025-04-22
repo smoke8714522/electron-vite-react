@@ -25,6 +25,7 @@ const FilterField: React.FC<FilterFieldProps> = ({
       <ListItemIcon sx={{ minWidth: 'auto' }}>{icon}</ListItemIcon>
       <ListItemText primary={label} sx={{ flex: '0 0 80px' }} />
       <TextField
+        label={label}
         variant="outlined"
         size="small"
         type={type}

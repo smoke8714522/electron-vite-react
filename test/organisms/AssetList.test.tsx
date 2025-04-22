@@ -1,8 +1,8 @@
 // test/organisms/AssetList.test.tsx
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import AssetList from '../../src/components/organisms/AssetList';
 import { Asset } from '../../src/types/api';
 
@@ -12,18 +12,32 @@ vi.mock('react-virtualized-auto-sizer', () => ({
     children({ height: 600, width: 800 }), // Provide fixed dimensions
 }));
 
-// Mock AssetCard (can be the same mock as AssetGrid, or a simpler one for list view)
+// Mock AssetCard - same as AssetGrid mock
+const mockOnClickAssetCard = vi.fn();
 vi.mock('../../src/components/molecules/AssetCard', () => ({
-  // Assuming AssetCard is reused directly in the list rows
-  default: ({ asset }: { asset: Asset }) => <div data-testid={`asset-card-${asset.id}`}>{asset.path}</div>,
+  default: ({ asset, isSelected, onClick }: { asset: Asset, isSelected: boolean, onClick: (e: React.MouseEvent) => void }) => (
+    <div 
+      data-testid={`asset-card-${asset.id}`} 
+      onClick={(e) => {
+        mockOnClickAssetCard(asset.id, e); // Mock the call locally if needed
+        onClick(e); // Propagate the click event up to AssetList
+      }}
+      aria-selected={isSelected}
+      role="listitem" // Add role for better semantics in list context
+    >
+      {asset.path}
+    </div>
+  ),
 }));
 
-// Mock Zustand store hooks
+// Mock Zustand store hooks - Provide selection actions
+const mockSetSelected = vi.fn();
+const mockToggleSelected = vi.fn();
 vi.mock('../../src/store/filterStore', () => ({
-  useSelection: () => new Set<number>(),
+  useSelection: () => new Set<number>(), // Start with empty selection
   useAppActions: () => ({
-    toggleSelected: vi.fn(),
-    setSelected: vi.fn(),
+    setSelected: mockSetSelected,
+    toggleSelected: mockToggleSelected,
   }),
 }));
 
@@ -34,10 +48,17 @@ const mockAssets: Asset[] = [
 ];
 
 describe('AssetList Component', () => {
+
+  beforeEach(() => {
+    // Clear mocks before each test
+    mockSetSelected.mockClear();
+    mockToggleSelected.mockClear();
+    mockOnClickAssetCard.mockClear();
+  });
+
+  // --- Rendering Tests ---
   it('renders loading state correctly', () => {
-    // Need access to the container to query by class
     const { container } = render(<AssetList assets={undefined} loading={true} error={null} />);
-    // Check for skeleton elements by class
     const skeletons = container.querySelectorAll('.MuiSkeleton-root');
     expect(skeletons.length).toBeGreaterThan(0);
   });
@@ -54,14 +75,39 @@ describe('AssetList Component', () => {
 
   it('renders assets in a virtualized list', () => {
     render(<AssetList assets={mockAssets} loading={false} error={null} />);
-    // Check if mocked list items (via AssetCard mock) are rendered
-    // Virtualization means only visible items are rendered.
     expect(screen.getByTestId('asset-card-1')).toBeInTheDocument();
     expect(screen.getByText('files/doc1.pdf')).toBeInTheDocument();
     expect(screen.getByTestId('asset-card-2')).toBeInTheDocument();
     expect(screen.getByText('audio/track2.mp3')).toBeInTheDocument();
-    // Add more checks based on the mocked height/width
   });
 
-  // TODO: Add tests for selection interactions (click, ctrl+click) specific to list rows
+  // --- Selection Tests ---
+  describe('Selection Handling', () => {
+    it('calls setSelected action on single click', () => {
+      render(<AssetList assets={mockAssets} loading={false} error={null} />);
+      // Find the mock list item representation
+      const listItem1 = screen.getByTestId('asset-card-1');
+      
+      fireEvent.click(listItem1);
+
+      expect(mockSetSelected).toHaveBeenCalledTimes(1);
+      expect(mockSetSelected).toHaveBeenCalledWith([1]);
+      expect(mockToggleSelected).not.toHaveBeenCalled();
+    });
+
+    it('calls toggleSelected action on Ctrl+click', () => {
+      render(<AssetList assets={mockAssets} loading={false} error={null} />);
+      const listItem2 = screen.getByTestId('asset-card-2');
+      
+      fireEvent.click(listItem2, { ctrlKey: true });
+
+      expect(mockToggleSelected).toHaveBeenCalledTimes(1);
+      expect(mockToggleSelected).toHaveBeenCalledWith(2);
+      expect(mockSetSelected).not.toHaveBeenCalled();
+    });
+    
+    it.skip('handles Shift+click for range selection', () => {
+        // TODO: Implement shift-click test if AssetList supports it directly
+    });
+  });
 }); 

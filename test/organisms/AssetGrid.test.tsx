@@ -1,8 +1,8 @@
 // test/organisms/AssetGrid.test.tsx
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import AssetGrid from '../../src/components/organisms/AssetGrid';
 import { Asset } from '../../src/types/api';
 
@@ -12,17 +12,32 @@ vi.mock('react-virtualized-auto-sizer', () => ({
     children({ height: 600, width: 800 }), // Provide fixed dimensions for testing
 }));
 
-// Mock AssetCard
+// Mock AssetCard to include onClick prop simulation
+const mockOnClickAssetCard = vi.fn();
 vi.mock('../../src/components/molecules/AssetCard', () => ({
-  default: ({ asset }: { asset: Asset }) => <div data-testid={`asset-card-${asset.id}`}>{asset.path}</div>,
+  // Let the grid pass down the isSelected prop and onClick handler
+  default: ({ asset, isSelected, onClick }: { asset: Asset, isSelected: boolean, onClick: (e: React.MouseEvent) => void }) => (
+    <div 
+      data-testid={`asset-card-${asset.id}`} 
+      onClick={(e) => {
+        mockOnClickAssetCard(asset.id, e); // Mock the call locally if needed
+        onClick(e); // Propagate the click event up to AssetGrid
+      }}
+      aria-selected={isSelected}
+    >
+      {asset.path}
+    </div>
+  ),
 }));
 
-// Mock Zustand store hooks
+// Mock Zustand store hooks - Provide selection actions
+const mockSetSelected = vi.fn();
+const mockToggleSelected = vi.fn();
 vi.mock('../../src/store/filterStore', () => ({
-  useSelection: () => new Set<number>(),
+  useSelection: () => new Set<number>(), // Start with empty selection
   useAppActions: () => ({
-    toggleSelected: vi.fn(),
-    setSelected: vi.fn(),
+    setSelected: mockSetSelected,
+    toggleSelected: mockToggleSelected,
   }),
 }));
 
@@ -33,6 +48,16 @@ const mockAssets: Asset[] = [
 ];
 
 describe('AssetGrid Component', () => {
+
+  beforeEach(() => {
+    // Clear mocks before each test
+    mockSetSelected.mockClear();
+    mockToggleSelected.mockClear();
+    mockOnClickAssetCard.mockClear();
+    // Reset the selection mock if necessary (e.g., if testing selection state changes)
+    // vi.mocked(require('../../src/store/filterStore').useSelection).mockReturnValue(new Set());
+  });
+
   it('renders loading state correctly', () => {
     // Need access to the container to query by class
     const { container } = render(<AssetGrid assets={undefined} loading={true} error={null} />);
@@ -63,6 +88,50 @@ describe('AssetGrid Component', () => {
     // Add more checks if needed, depending on the fixed size used in mock
   });
 
-  // TODO: Add tests for selection interactions (click, ctrl+click)
-  // TODO: Add tests for drag-and-drop grouping if implemented in AssetCard/AssetGrid
+  // --- Selection Tests ---
+  describe('Selection Handling', () => {
+    it('calls setSelected action on single click', () => {
+      render(<AssetGrid assets={mockAssets} loading={false} error={null} />);
+      const card1 = screen.getByTestId('asset-card-1');
+      
+      fireEvent.click(card1);
+
+      expect(mockSetSelected).toHaveBeenCalledTimes(1);
+      expect(mockSetSelected).toHaveBeenCalledWith([1]); // Assuming single click replaces selection
+      expect(mockToggleSelected).not.toHaveBeenCalled();
+    });
+
+    it('calls toggleSelected action on Ctrl+click', () => {
+      render(<AssetGrid assets={mockAssets} loading={false} error={null} />);
+      const card2 = screen.getByTestId('asset-card-2');
+      
+      // Simulate Ctrl key being pressed during the click
+      fireEvent.click(card2, { ctrlKey: true });
+
+      expect(mockToggleSelected).toHaveBeenCalledTimes(1);
+      expect(mockToggleSelected).toHaveBeenCalledWith(2);
+      expect(mockSetSelected).not.toHaveBeenCalled();
+    });
+    
+    // Note: Shift+click requires more complex state tracking (last clicked item)
+    // which might be better suited for E2E tests or if AssetGrid itself manages that state.
+    it.skip('handles Shift+click for range selection', () => {
+        // TODO: Implement shift-click test if AssetGrid supports it directly
+    });
+  });
+
+  // --- Drag-and-Drop Tests (Placeholder) ---
+  describe.skip('Drag and Drop Grouping', () => {
+    // TODO: Add tests for drag-and-drop grouping if implemented in AssetCard/AssetGrid
+    // This would likely involve mocking the drag events and the addToGroup API call
+    it('initiates drag correctly', () => {
+      // Render, find draggable element, simulate dragStart
+      // Assert dataTransfer data is set correctly
+    });
+
+    it('handles drop correctly and calls API', () => {
+      // Render, find drop target, simulate dragOver, simulate drop
+      // Assert addToGroup API mock is called with correct source/target IDs
+    });
+  });
 }); 
