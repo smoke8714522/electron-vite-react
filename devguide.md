@@ -8,14 +8,15 @@
 │   ├── components/       # Reusable UI components (atoms, molecules, organisms)
 │   │   ├── atoms/        # e.g. ActionButton.tsx, FilterField.tsx
 │   │   ├── molecules/    # e.g., AssetCard.tsx
-│   │   └── organisms/    # e.g., FilterSidebar.tsx, LibraryToolbar.tsx, AssetGrid.tsx
+│   │   └── organisms/    # e.g., FilterSidebar.tsx, LibraryToolbar.tsx, AssetGrid.tsx, VersionPanel.tsx, TagEditorModal.tsx
 │   ├── hooks/            # Custom React hooks (e.g., useApi.ts)
 │   ├── store/            # Zustand stores (e.g., filterStore.ts -> useAppStore)
 │   ├── theme/            # MUI theme overrides & tokens  
 │   ├── pages/            # Top‑level views (e.g., LibraryView.tsx, SettingsView.tsx)
-│   ├── types/            # Shared TypeScript types (e.g., api.ts)
+│   ├── types/            # Shared TypeScript types (e.g., api.ts, dnd.ts)
 │   └── main.tsx          # Renderer process entry point
 ├── lib/                  # Electron main process code (IPC handlers, ThumbnailService, DB service)
+│   └── db.ts             # Database initialization, schema, and access functions
 ├── electron/             # Electron-Vite specific config/build files  
 │   ├── main/             # Main process entry point (index.ts)
 │   └── preload/          # Preload script entry point (index.ts)  
@@ -34,61 +35,65 @@
 ├── tsconfig.node.json    # TS config for main/preload
 └── README.md  
 ```
-*(Note: `vault`, `data`, `cache`, `logs` locations might be configured elsewhere, often within Electron's `app.getPath('userData')`)*
 
-## 2. Core Architecture & IPC
+## 2. Core Architecture & Communication (IPC)
 
-*   **Main Process (`/lib`, `electron/main`):** Handles Node.js APIs, file system access, database operations (SQLite via `better-sqlite3`), thumbnail generation.
-*   **Renderer Process (`/src`):** React UI (MUI components), state management (Zustand).
-*   **Communication:** Uses Electron IPC via a preload script (`electron/preload/index.ts`) and `contextBridge`. The preload script acts as a secure bridge, selectively exposing main process functionality.
-
-**IPC API Contract:**
-
-*   All backend interactions from the renderer are exposed via `window.api.<methodName>`. This is the *only* way renderer code should interact with the main process.
-*   Refer to **`src/types/api.ts`** for the **`IElectronAPI` interface**, which defines all exposed methods, and for detailed `Payload` and `Response` type definitions.
-*   Standard Response Format: `{ success: boolean, data?: <DataType>, error?: string }` (See `ApiResponse<T>` in `src/types/api.ts`).
-*   **Key Channels (Examples - Full list in `src/types/api.ts`):**
-    *   `get-assets`: Fetch assets based on filters/sorting.
-    *   `update-asset`: Modify asset metadata.
-    *   `bulk-import-assets`: Trigger main process to show file dialog and handle import.
-    *   `add-to-group`: Link assets (versioning).
-    *   `onViewChange`: Listener for menu-driven view changes (main -> renderer).
+*   **Main Process (`/lib`, `electron/main`):** Node.js backend. Handles DB (SQLite via `better-sqlite3`), file system, thumbnailing, etc.
+*   **Renderer Process (`/src`):** React UI (MUI), state (Zustand).
+*   **Communication:** Secure Electron IPC via `contextBridge`.
+    *   The preload script (`electron/preload/index.ts`) selectively exposes main process functions to the renderer.
+    *   **Access:** Renderer calls backend functions via `window.api.<methodName>(payload)`. **This is the only way.**
+    *   **API Contract:** The definitive source for all available methods, their payloads, and responses is the **`IElectronAPI` interface** in **`src/types/api.ts`**.
+    *   **Response Format:** Standardized as `ApiResponse<T>` defined in `src/types/api.ts` (usually `{ success: boolean, data?: T, error?: string }`).
 
 ## 3. Adding Features (Core Workflow)
 
-Follow these steps for features involving backend interaction:
+Follow these steps for features needing backend interaction:
 
-1.  **Define Types:** Add/update payload/response interfaces in `src/types/api.ts`. Critically, update the **`IElectronAPI` interface** with the new method signature.
-2.  **Add IPC Handler:** Implement the core logic in the main process (e.g., in a service within `/lib/services` or directly in `electron/main/index.ts` if simple). Register the handler using `ipcMain.handle('<channel-name>', async (event, payload) => { ... })`. **Validate all incoming `payload` data rigorously.**
-3.  **Expose via Preload:** Add the corresponding method to the `api` object in `electron/preload/index.ts`. This method should simply invoke the IPC channel: `methodName: (payload) => ipcRenderer.invoke('<channel-name>', payload)`. Ensure the method name matches the `IElectronAPI` interface.
-4.  **Create/Use API Hook:** Add a stable API wrapper function (using `safeApiCall`) and a specific React hook (using `useAsyncCall`) in `src/hooks/useApi.ts`. This provides a consistent way to handle loading/error states in the UI.
-5.  **Use in UI:** Call the new hook from your React component (`/src/pages` or `/src/components`). Use the returned `call`, `loading`, `error`, and `data` properties to manage the UI state during the asynchronous operation.
-6.  **Update Global State (if needed):** If the operation affects shared application state (like the list of assets, filters, selection), dispatch an action using hooks provided by the Zustand store (`src/store/filterStore.ts` via `useAppActions`) within the success handler of your API call.
+1.  **Types (`src/types/api.ts`):** Define/update Payload/Response interfaces. **Crucially, update `IElectronAPI`** with the new method signature.
+2.  **DB Logic (`lib/db.ts`):** Add/update database functions using `better-sqlite3`.
+3.  **IPC Handler (`electron/main/index.ts` or Service):** Implement the main process logic. Register the handler with `ipcMain.handle(...)`. **Validate incoming payloads rigorously.**
+4.  **Expose via Preload (`electron/preload/index.ts`):** Add the corresponding method to the `api` object, invoking the correct IPC channel.
+5.  **API Hook (`src/hooks/useApi.ts`):** Add a wrapper function (using `safeApiCall`) and a React hook (using the `useAsyncCall` pattern) for convenient frontend usage (handles loading/error states).
+6.  **UI (`/src/pages`, `/src/components`):** Call the new hook from your React component. Use the hook's state (`loading`, `error`, `data`) and `call` function.
+7.  **State/Refresh:** If the action affects shared state or requires a data refresh in other components, use callbacks (e.g., `onDataChange`) passed down from parent views (like `LibraryView`) to trigger state updates or refetches (e.g., re-calling `fetchAssets` from `useGetAssets`).
 
 ## 4. Key Libraries & Patterns
 
-*   **UI Framework:** React 18+ with TypeScript.
-*   **Component Library:** Material UI (MUI) v5. Use `sx` prop or `styled()` for styling.
-*   **State Management:** Zustand (`src/store/filterStore.ts` for main app state). Access via provided selector hooks (e.g., `useYearFilter`, `useSelectionCount`, `useAppActions`).
-*   **Virtualization:** `react-window` and `react-virtualized-auto-sizer` for performant rendering of large lists/grids (`AssetGrid.tsx`, `AssetList.tsx`).
-*   **Drag & Drop:** `react-dnd` with `react-dnd-html5-backend` for implementing drag-and-drop interactions like asset grouping (`AssetCard.tsx`). Installed via `npm install react-dnd react-dnd-html5-backend`.
-*   **API Calls (Renderer):** Use custom React Hooks from `src/hooks/useApi.ts` built upon the `useAsyncCall` pattern.
-*   **Database:** SQLite. The database is initialized, and the schema (`CREATE TABLE` statements) is defined and executed within the `initDatabase` and `createTables` functions in `lib/db.ts`. The database file is located at `/data/db.sqlite` relative to the project root.
-*   **Testing:** Vitest. Place tests in `/test` mirroring `/src`. Run with `npm run test:unit`.
-    - Define all `vi.fn()` spies inside the `vi.mock()` factory to avoid hoisting/TDZ errors.
-    - Use `vi.mocked()` to cast imported mocks in TypeScript so methods like `mockReturnValue` are available.
-*   **Testing Library:** React Testing Library (`@testing-library/react`) for component tests.
-*   **TypeScript:** Strict mode enabled (`tsconfig.json`, `tsconfig.node.json`).
-*   **Build Tool:** Vite via `electron-vite` plugin.
+*   **UI Framework:** React 18+ / TypeScript.
+*   **Component Library:** Material UI (MUI) v5. Use `sx` prop or `styled()` for styling, referencing `theme/` tokens. Organisms like `AssetGrid` and `VersionPanel` contain significant view logic.
+*   **State Management:** Zustand (`src/store/`). Global filters/selection managed via `useAppStore()` hooks. Component state is preferred for local UI concerns.
+*   **API Calls (Renderer):** Use hooks from `src/hooks/useApi.ts` built on the `useAsyncCall` pattern. These centralize IPC calls and manage async state (loading, error).
+*   **Data Refresh:** Primarily handled via callbacks (`onDataChange`, `onSaveSuccess`) triggering refetches in parent components (see `LibraryView`).
+*   **Virtualization:** `react-window` (`FixedSizeGrid` in `AssetGrid.tsx`) for performance. *Note: Expansion within `AssetCard` (like `VersionPanel`) might clip; consider `VariableSizeGrid` if problematic.*
+*   **Drag & Drop:** `react-dnd` for grouping (`AssetCard` -> `AssetGrid` handler).
+*   **Database:** SQLite via `better-sqlite3`. Logic encapsulated in `lib/db.ts`. Schema includes `assets` (with `master_id`, `version_no`), `custom_fields`, etc.
+*   **Testing:** Vitest + React Testing Library (`@testing-library/react`). Tests in `/test`. Run via `npm run test:unit`. *Remember: Define `vi.fn()` spies inside `vi.mock()` factory.*
+*   **Build:** Vite via `electron-vite`.
 
 ## 5. Running the Project
 
-*   Install dependencies: `npm install`
-*   Run development server: `npm run dev`
-*   Run linters: `npm run lint`
-*   Run type checking: `npm run type-check`
-*   Run unit tests: `npm run test:unit` or `npm run test:watch`
-*   Build for production: `npm run build`
+*   Install: `npm install`
+*   Develop: `npm run dev`
+*   Lint: `npm run lint`
+*   Type Check: `npm run type-check`
+*   Test: `npm run test:unit` / `npm run test:watch`
+*   Build: `npm run build`
 
-*(Refer to `package.json` for all scripts)*.
+*(See `package.json` for all scripts)*.
+
+## 6. Key Concepts Illustrated (Examples from Versioning/Editing Features)
+
+*   **Modal Control:** Parent views (`LibraryView`) manage state (`isOpen`, `selectedAsset`) for modals (`TagEditorModal`).
+*   **Component Data Fetching:** Complex components (`VersionPanel`) can fetch their own data using dedicated API hooks (`useGetVersions`).
+*   **Callback Propagation:** Actions in nested components (`VersionPanel` -> `AssetCard` -> `AssetGrid` -> `LibraryView`) trigger data refreshes in the top-level view via callbacks (`onVersionsChange` -> `onDataChange` -> `fetchAssets`).
+*   **Backend Logic:** Complex operations like `promote-version` involve DB transactions handled in `lib/db.ts` and exposed via a single IPC call.
+
+## 7. Known Issues / TODOs
+
+*   Backend `get-assets` needs to return `versionCount`.
+*   `AssetGrid` using `FixedSizeGrid` can cause layout issues when `VersionPanel` expands.
+*   `AssetList` view lacks full tag editing/versioning support.
+*   Enhance user-facing error handling (e.g., snackbars).
+*   Add confirmation dialogs for destructive actions (e.g., Remove from Group).
 
