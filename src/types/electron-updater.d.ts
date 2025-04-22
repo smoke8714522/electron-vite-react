@@ -3,8 +3,8 @@ interface VersionInfo {
   version: string
   newVersion?: string
 }
-
+ 
 interface ErrorType {
   message: string
   error: Error
-}
+} 

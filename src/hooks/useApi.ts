@@ -10,6 +10,10 @@ import type {
   DeleteAssetPayload,
   DeleteAssetResponse,
   BulkImportAssetsResponse,
+  GetVersionsPayload,
+  GetVersionsResponse,
+  AddToGroupPayload,
+  AddToGroupResponse,
   IElectronAPI
 } from '../types/api';
 
@@ -37,11 +41,13 @@ const safeApiCall = <P, R>(method: (payload: P) => Promise<ApiResponse<R>>) =>
     return method(payload);
 };
 
-const getAssetsApi = safeApiCall<any | undefined, GetAssetsResponse['data']>(window.api.getAssets);
+const getAssetsApi = safeApiCall(window.api.getAssets);
 const createAssetApi = safeApiCall<CreateAssetPayload, CreateAssetResponse['data']>(window.api.createAsset);
 const updateAssetApi = safeApiCall<UpdateAssetPayload, UpdateAssetResponse['data']>(window.api.updateAsset);
 const deleteAssetApi = safeApiCall<DeleteAssetPayload, DeleteAssetResponse['data']>(window.api.deleteAsset);
 const bulkImportAssetsApi = safeApiCall<void, BulkImportAssetsResponse['data']>(window.api.bulkImportAssets);
+const getVersionsApi = safeApiCall<GetVersionsPayload, GetVersionsResponse['data']>(window.api.getVersions);
+const addToGroupApi = safeApiCall<AddToGroupPayload, AddToGroupResponse['data']>(window.api.addToGroup);
 
 // --- Hook Implementation --- //
 
@@ -95,23 +101,31 @@ function useAsyncCall<TResponseData = unknown, TPayload = any>(
 // --- Specific API Hooks --- //
 
 export function useGetAssets() {
-  return useAsyncCall(getAssetsApi);
+  return useAsyncCall<GetAssetsResponse['data'], any | undefined>(getAssetsApi);
 }
 
 export function useCreateAsset() {
-  return useAsyncCall(createAssetApi);
+  return useAsyncCall<CreateAssetResponse['data'], CreateAssetPayload>(createAssetApi);
 }
 
 export function useUpdateAsset() {
-  return useAsyncCall(updateAssetApi);
+  return useAsyncCall<UpdateAssetResponse['data'], UpdateAssetPayload>(updateAssetApi);
 }
 
 export function useDeleteAsset() {
-  return useAsyncCall(deleteAssetApi);
+  return useAsyncCall<DeleteAssetResponse['data'], DeleteAssetPayload>(deleteAssetApi);
 }
 
 export function useBulkImportAssets() {
-  return useAsyncCall(bulkImportAssetsApi);
+  return useAsyncCall<BulkImportAssetsResponse['data'], void>(bulkImportAssetsApi);
+}
+
+export function useGetVersions() {
+  return useAsyncCall<GetVersionsResponse['data'], GetVersionsPayload>(getVersionsApi);
+}
+
+export function useAddToGroup() {
+  return useAsyncCall<AddToGroupResponse['data'], AddToGroupPayload>(addToGroupApi);
 }
 
 // Example of a combined hook (alternative approach)

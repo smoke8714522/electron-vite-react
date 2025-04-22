@@ -14,7 +14,7 @@
 2. **Milestone 2: Database & IPC Layer**  
    - **Goal**: Establish SQLite schema and IPC bridge for CRUD operations.  
    - **Deliverables**:  
-     - `assets` and `custom_fields` tables created in app root `/vault/db.sqlite`.  
+     - `assets` and `custom_fields` tables created in project root `data/db.sqlite`.  
      - IPC handlers for `get-assets`, `create-asset`, `update-asset`, `delete-asset`.  
      - `useApi` hook wrapping these calls with loading/error state.  
    - **Verification/Test**:  
@@ -26,10 +26,10 @@
    - **Deliverables**:  
      - “Bulk Import” button wired to `bulk-import-assets` IPC.  
      - ThumbnailService in main process using `sharp` and `ffmpeg`.  
-     - Cached thumbnails stored under `/vault/cache/thumbnails`.  
+     - Cached thumbnails stored under project root `cache/thumbnails`.  
    - **Verification/Test**:  
-     - Importing a sample folder pops thumbnails in UI.  
-     - Thumbnail files appear on disk and render correctly.  
+     - Importing a sample folder populates the database and UI reflects changes (may need refresh).  
+     - Thumbnail files appear on disk in `cache/thumbnails`.  
 
 4. **Milestone 4: Library View UI**  
    - **Goal**: Build the core library grid/list with filtering, sorting, and virtualization.  
@@ -38,7 +38,7 @@
      - Grid and list components using `react-window`.  
      - Drag‑and‑drop grouping between AssetCards.  
    - **Verification/Test**:  
-     - Rendering 10 000 mock assets remains smooth (<100 ms frame).  
+     - Rendering 10 000 mock assets remains smooth (<100 ms frame).  
      - Dragging one card onto another executes `add-to-group` IPC.  
 
 5. **Milestone 5: Metadata Editing & Version Panel**  

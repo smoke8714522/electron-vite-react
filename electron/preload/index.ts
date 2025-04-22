@@ -1,5 +1,13 @@
 import { ipcRenderer, contextBridge } from 'electron'
-import type { IElectronAPI, CreateAssetPayload, UpdateAssetPayload, DeleteAssetPayload } from '../../src/types/api'
+import type {
+  IElectronAPI,
+  CreateAssetPayload,
+  UpdateAssetPayload,
+  DeleteAssetPayload,
+  GetVersionsPayload,
+  AddToGroupPayload,
+  // Add other payload types as needed
+} from '../../src/types/api'
 
 // --------- Expose some API to the Renderer process ---------
 // contextBridge.exposeInMainWorld('ipcRenderer', { 
@@ -18,6 +26,8 @@ const api: Partial<IElectronAPI> = {
   bulkImportAssets: () => ipcRenderer.invoke('bulk-import-assets'),
 
   // Placeholder for other APIs (e.g., custom fields)
+  getVersions: (payload: GetVersionsPayload) => ipcRenderer.invoke('get-versions', payload),
+  addToGroup: (payload: AddToGroupPayload) => ipcRenderer.invoke('add-to-group', payload),
 }
 
 // Expose the API to the renderer process

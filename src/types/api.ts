@@ -1,6 +1,7 @@
 export interface Asset {
   id: number;
   path: string;
+  fileName: string;
   createdAt: string; // ISO 8601 date string
   mimeType: string;
   size: number;
@@ -10,6 +11,7 @@ export interface Asset {
   shares: number;
   master_id?: number | null;
   version_no: number;
+  thumbnailPath?: string;
 }
 
 // Placeholder for CustomField if needed later
@@ -46,7 +48,7 @@ export type UpdateAssetResponse = ApiResponse<Asset>;
 export interface DeleteAssetPayload {
   id: number;
 }
-export type DeleteAssetResponse = ApiResponse;
+export type DeleteAssetResponse = ApiResponse<null>;
 
 // Types for bulk-import-assets
 export interface BulkImportError {
@@ -59,6 +61,27 @@ export interface BulkImportResult {
 }
 export type BulkImportAssetsResponse = ApiResponse<BulkImportResult>;
 
+// Payload for grouping assets
+export interface AddToGroupPayload {
+  sourceId: number; // The asset being dragged
+  targetId: number; // The asset being dropped onto
+}
+
+// Placeholder Types for getVersions (if not defined elsewhere)
+export interface GetVersionsPayload {
+  masterId: number;
+}
+
+// Define generic API response structure
+export interface ApiResponse<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+
+// Ensure Asset type includes master_id and version_no
+// ... existing code ...
+
 // Interface for the API exposed via contextBridge
 export interface IElectronAPI {
   getAssets: (filters?: any) => Promise<GetAssetsResponse>;
@@ -66,6 +89,9 @@ export interface IElectronAPI {
   updateAsset: (payload: UpdateAssetPayload) => Promise<UpdateAssetResponse>;
   deleteAsset: (payload: DeleteAssetPayload) => Promise<DeleteAssetResponse>;
   bulkImportAssets: () => Promise<BulkImportAssetsResponse>;
+  getVersions: (payload: GetVersionsPayload) => Promise<GetVersionsResponse>;
+  addToGroup: (payload: AddToGroupPayload) => Promise<ApiResponse<null>>;
+  getThumbnailUrl: (assetId: number) => string;
   // Add other API methods here
 }
 
@@ -74,3 +100,7 @@ declare global {
     api: IElectronAPI;
   }
 } 
+
+export type BulkImportResponse = ApiResponse<BulkImportResult>;
+export type GetVersionsResponse = ApiResponse<Asset[]>;
+export type AddToGroupResponse = ApiResponse<null>; 
