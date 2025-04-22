@@ -71,6 +71,7 @@ Follow these steps for features involving backend interaction:
 *   **Component Library:** Material UI (MUI) v5. Use `sx` prop or `styled()` for styling.
 *   **State Management:** Zustand (`src/store/filterStore.ts` for main app state). Access via provided selector hooks (e.g., `useYearFilter`, `useSelectionCount`, `useAppActions`).
 *   **Virtualization:** `react-window` and `react-virtualized-auto-sizer` for performant rendering of large lists/grids (`AssetGrid.tsx`, `AssetList.tsx`). Installed via `npm install react-window react-virtualized-auto-sizer`.
+*   **Drag & Drop:** `react-dnd` with `react-dnd-html5-backend` for implementing drag-and-drop interactions like asset grouping (`AssetCard.tsx`). Installed via `npm install react-dnd react-dnd-html5-backend`.
 *   **API Calls (Renderer):** Use custom React Hooks from `src/hooks/useApi.ts` built upon the `useAsyncCall` pattern.
 *   **Database:** SQLite, accessed via `better-sqlite3` in the main process (likely within `/lib/services/dbService.ts`).
 *   **Testing:** Vitest. Place tests in `/test` mirroring `/src`. Run with `npm run test:unit`.
@@ -131,3 +132,113 @@ The ability to switch between Grid and List view is managed as follows:
 2.  **Props:** `LibraryView` passes the current `view` state and the state setter function (`onViewChange`) down to the `LibraryToolbar`.
 3.  **Toggle:** `LibraryToolbar` uses an MUI `ToggleButtonGroup` controlled by the `view` prop. When a toggle button is clicked, it calls the `onViewChange` prop function (passed down from `LibraryView`) with the new view mode ('grid' or 'list').
 4.  **Conditional Rendering:** `LibraryView` uses the `view` state to conditionally render either the `<AssetGrid />` or `<AssetList />` component.
+
+### Drag & Drop Grouping (`react-dnd`)
+
+Asset grouping (creating versions by dragging one asset onto another) is implemented using `react-dnd`.
+
+1.  **Setup:** The application is wrapped with `DndProvider` in `src/main.tsx`.
+
+    ```tsx
+    // src/main.tsx
+    import { DndProvider } from 'react-dnd';
+    import { HTML5Backend } from 'react-dnd-html5-backend';
+    // ... other imports
+
+    ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
+      <React.StrictMode>
+        <ThemeProvider theme={theme}>
+          <CssBaseline />
+          <DndProvider backend={HTML5Backend}> {/* Provider Setup */}
+            <App />
+          </DndProvider>
+        </ThemeProvider>
+      </React.StrictMode>,
+    );
+    ```
+
+2.  **Types:** Shared types for draggable items are defined in `src/types/dnd.ts`.
+
+    ```typescript
+    // src/types/dnd.ts
+    export const ItemTypes = {
+      ASSET_CARD: 'asset_card',
+    };
+
+    export interface DndItem {
+      id: number; // Asset ID being dragged
+      type: string; // Should match one of the ItemTypes
+    }
+    ```
+
+3.  **AssetCard Implementation:** The `AssetCard` component uses `useDrag` to make itself draggable and `useDrop` to accept drops from other cards.
+
+    ```tsx
+    // src/components/molecules/AssetCard.tsx (Snippets)
+    import React, { useRef } from 'react';
+    import { useDrag, useDrop } from 'react-dnd';
+    import { ItemTypes, DndItem } from '../../types/dnd';
+
+    interface AssetCardProps {
+      // ... other props
+      onGroup: (sourceId: number, targetId: number) => void; // Callback for drop
+    }
+
+    const AssetCard: React.FC<AssetCardProps> = ({ asset, isSelected, onClick, onGroup }) => {
+      const ref = useRef<HTMLDivElement>(null);
+
+      const [{ isDragging }, drag] = useDrag(() => ({
+        type: ItemTypes.ASSET_CARD,
+        item: { id: asset.id, type: ItemTypes.ASSET_CARD } as DndItem,
+        collect: (monitor) => ({ isDragging: !!monitor.isDragging() }),
+      }));
+
+      const [{ isOver, canDrop }, drop] = useDrop(() => ({
+        accept: ItemTypes.ASSET_CARD,
+        drop: (item: DndItem) => {
+          if (item.id !== asset.id) {
+            onGroup(item.id, asset.id); // Call parent handler on drop
+          }
+        },
+        collect: (monitor) => ({
+          isOver: !!monitor.isOver(),
+          canDrop: !!monitor.canDrop(),
+        }),
+      }), [asset.id, onGroup]);
+
+      drag(drop(ref)); // Attach both drag and drop refs
+
+      return (
+        <Card ref={ref} sx={{ opacity: isDragging ? 0.5 : 1, /* other styles */ }}>
+          {/* Card content */}
+        </Card>
+      );
+    };
+    ```
+    The `onGroup` prop function is passed down from the parent component (e.g., `AssetGrid`) and is responsible for triggering the actual grouping logic (likely via an API call like `add-to-group`).
+
+4.  **E2E Testing:** Drag-and-drop functionality is tested using Playwright in `test/e2e/grouping.spec.ts`.
+
+    ```typescript
+    // test/e2e/grouping.spec.ts (Snippet)
+    import { test, expect, ElectronApplication, Page, _electron as electron } from '@playwright/test';
+
+    // ... setup and teardown ...
+
+    test('should group assets by dragging one card onto another', async () => {
+      const sourceCard = page.locator('[data-testid^="asset-card-"]').nth(0); // Adjust selector
+      const targetCard = page.locator('[data-testid^="asset-card-"]').nth(1); // Adjust selector
+
+      await expect(sourceCard).toBeVisible();
+      await expect(targetCard).toBeVisible();
+
+      // Perform the drag-and-drop operation
+      await sourceCard.dragTo(targetCard);
+
+      // ** Add specific assertions here based on UI feedback **
+      // e.g., expect(page.locator('toast-selector')).toHaveText(/grouped/);
+      // e.g., expect(sourceCard).not.toBeVisible();
+      await expect(true).toBe(true); // Placeholder assertion
+    });
+    ```
+    *(Remember to replace placeholder selectors and assertions with actual implementation details)*.
