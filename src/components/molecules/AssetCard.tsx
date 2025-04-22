@@ -3,7 +3,8 @@ import { Card, CardContent, CardMedia, Typography, Checkbox, Box, Chip } from '@
 import { Asset } from '../../types/api';
 import { useDrag, useDrop } from 'react-dnd';
 import { ItemTypes, DndItem } from '../../types/dnd';
-import VersionPanel from '../organisms/VersionPanel';
+import VersionPanel from '../organisms/VersionPanel'; // Uncomment import
+import LayersIcon from '@mui/icons-material/Layers'; // Import an icon
 
 // Function to get thumbnail URL (copied from AssetCard_Old.tsx logic)
 const getThumbnailUrl = (asset: Asset): string => {
@@ -27,7 +28,7 @@ const getThumbnailUrl = (asset: Asset): string => {
 
 // Updated props
 interface AssetCardProps {
-  asset: Asset & { versionCount?: number };
+  asset: Asset & { versionCount?: number }; // Keep optional
   isSelected: boolean;
   onClick: () => void;
   onGroup: (sourceId: number, targetId: number) => void;
@@ -39,7 +40,8 @@ const AssetCard: React.FC<AssetCardProps> = ({
   isSelected,
   onClick,
   onGroup,
-  onDataChange
+  onDataChange,
+  asset: { versionCount = 0 } // Destructure with default 0
 }) => {
   const ref = useRef<HTMLDivElement>(null);
   const [isVersionPanelOpen, setIsVersionPanelOpen] = useState(false);
@@ -76,6 +78,7 @@ const AssetCard: React.FC<AssetCardProps> = ({
     setIsVersionPanelOpen((prev) => !prev);
   };
 
+  // Restore handler - likely needed by the full VersionPanel component
   const handleVersionsChange = () => {
     console.log(`Versions changed for asset ${asset.id}, requesting data refresh.`);
     if (onDataChange) {
@@ -123,17 +126,20 @@ const AssetCard: React.FC<AssetCardProps> = ({
           }}
           onError={(e) => console.error(`Failed to load image: ${thumbnailUrl}`, e)}
         />
-        {asset.versionCount && asset.versionCount > 1 && (
+        {/* Render chip if versionCount >= 0 */}
+        {versionCount >= 0 && (
             <Chip
-                label={`${asset.versionCount} Versions`}
+                label={versionCount} // Show only the count
+                icon={<LayersIcon sx={{ fontSize: '1rem' }} />} // Add icon
                 size="small"
                 sx={{
                     position: 'absolute', bottom: 4, right: 4,
                     bgcolor: 'rgba(0, 0, 0, 0.7)', color: 'white',
                     cursor: 'pointer',
+                    '& .MuiChip-icon': { color: 'white' }, // Ensure icon color matches label
                     '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.9)' }
                 }}
-                onClick={handleToggleVersionPanel}
+                onClick={handleToggleVersionPanel} // Ensure this toggles the state
             />
         )}
       </Box>
@@ -146,6 +152,7 @@ const AssetCard: React.FC<AssetCardProps> = ({
         </Typography>
       </CardContent>
 
+      {/* Render the actual VersionPanel */}
       {asset.id && (
           <VersionPanel
               masterAssetId={asset.id}

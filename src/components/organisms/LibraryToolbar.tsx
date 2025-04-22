@@ -1,7 +1,6 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   Box,
-  Button,
   Typography,
   ToggleButtonGroup,
   ToggleButton,
@@ -10,7 +9,6 @@ import {
   FormControl,
   InputLabel,
   SelectChangeEvent,
-  CircularProgress
 } from '@mui/material';
 import ViewListIcon from '@mui/icons-material/ViewList';
 import ViewModuleIcon from '@mui/icons-material/ViewModule';
@@ -30,6 +28,7 @@ import {
 import type { ApiResponse, Asset } from '../../types/api';
 import type { ViewMode } from '../../pages/LibraryView';
 import ActionButton from '../atoms/ActionButton';
+import BulkEditModal from './BulkEditModal';
 
 type SortableField = 'createdAt' | 'year' | 'advertiser' | 'niche' | 'shares';
 
@@ -37,12 +36,14 @@ interface LibraryToolbarProps {
   view: ViewMode;
   onViewChange: (newView: ViewMode) => void;
   onRefreshNeeded: () => Promise<ApiResponse<Asset[] | undefined>>;
+  onSingleEdit: (assetId: number) => void;
 }
 
 const LibraryToolbar = ({ 
   view, 
   onViewChange, 
-  onRefreshNeeded 
+  onRefreshNeeded, 
+  onSingleEdit
 }: LibraryToolbarProps) => {
   const sortBy = useSortBy();
   const selectedIds = useSelection();
@@ -50,6 +51,8 @@ const LibraryToolbar = ({
   const { setSortBy, clearSelection } = useAppActions();
   const { call: callBulkImport, loading: importing } = useBulkImportAssets();
   const { call: callDeleteAsset, loading: deleting } = useDeleteAsset();
+
+  const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
 
   const handleViewChange = useCallback((_event: React.MouseEvent<HTMLElement>, newView: string | null) => {
     if (newView !== null) {
@@ -94,8 +97,21 @@ const LibraryToolbar = ({
   }, [selectedIds, selectionCount, callDeleteAsset, clearSelection, onRefreshNeeded]);
 
   const handleEditTagsClick = useCallback(() => {
-      console.log('Trigger Bulk Edit Modal for IDs:', Array.from(selectedIds));
-  }, [selectedIds]);
+      if (selectionCount === 1) {
+          const selectedArray = Array.from(selectedIds);
+          if (selectedArray.length === 1 && selectedArray[0] !== undefined) {
+              onSingleEdit(selectedArray[0]);
+          } else {
+              console.error("Selection count is 1 but couldn't retrieve valid ID.");
+          }
+      } else if (selectionCount > 1) {
+          setIsBulkEditOpen(true);
+      }
+  }, [selectionCount, selectedIds, onSingleEdit, setIsBulkEditOpen]);
+
+  const handleCloseBulkEdit = useCallback(() => {
+      setIsBulkEditOpen(false);
+  }, []);
 
   const actionsDisabled = selectionCount === 0;
 
@@ -174,6 +190,12 @@ const LibraryToolbar = ({
           <ViewListIcon />
         </ToggleButton>
       </ToggleButtonGroup>
+
+      <BulkEditModal 
+        open={isBulkEditOpen}
+        selectedIds={Array.from(selectedIds)}
+        onClose={handleCloseBulkEdit}
+      />
 
     </Box>
   );

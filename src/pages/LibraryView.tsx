@@ -6,7 +6,7 @@ import AssetGrid from '../components/organisms/AssetGrid';
 import AssetList from '../components/organisms/AssetList';
 import TagEditorModal from '../components/organisms/TagEditorModal';
 import { useGetAssets } from '../hooks/useApi';
-import { useAssetQuery } from '../store/filterStore';
+import { useAssetQuery, useAppActions } from '../store/filterStore';
 import type { Asset } from '../types/api';
 
 export type ViewMode = 'grid' | 'list';
@@ -19,6 +19,7 @@ const LibraryView: React.FC = () => {
     error, 
     data: assets 
   } = useGetAssets();
+  const { toggleSelected } = useAppActions();
 
   const [view, setView] = useState<ViewMode>('grid');
   const [isTagModalOpen, setIsTagModalOpen] = useState(false);
@@ -50,6 +51,22 @@ const LibraryView: React.FC = () => {
     fetchAssets(assetQuery);
   }, [fetchAssets, assetQuery]);
 
+  const handleAssetClick = useCallback((asset: Asset) => {
+    console.log('Toggling selection for asset:', asset.id);
+    toggleSelected(asset.id);
+  }, [toggleSelected]);
+
+  // New handler to open editor for a single asset ID
+  const handleSingleEditClick = useCallback((assetId: number) => {
+    const assetToEdit = assets?.find(a => a.id === assetId);
+    if (assetToEdit) {
+      handleOpenTagModal(assetToEdit);
+    } else {
+      console.warn(`Asset with ID ${assetId} not found for editing.`);
+      // Optionally show an error to the user
+    }
+  }, [assets, handleOpenTagModal]);
+
   return (
     <Box sx={{ display: 'flex', flexGrow: 1 }}>
       <FilterSidebar />
@@ -68,13 +85,14 @@ const LibraryView: React.FC = () => {
           view={view} 
           onViewChange={setView} 
           onRefreshNeeded={fetchAssets} 
+          onSingleEdit={handleSingleEditClick}
         />
         {view === 'grid' ? (
           <AssetGrid 
             assets={assets} 
             loading={loading} 
             error={error} 
-            onAssetClick={handleOpenTagModal}
+            onAssetClick={handleAssetClick}
             onDataChange={handleAssetDataChange}
           />
         ) : (
