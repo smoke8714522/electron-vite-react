@@ -1,8 +1,9 @@
-import React, { useRef } from 'react';
-import { Card, CardContent, CardMedia, Typography, Checkbox } from '@mui/material';
+import React, { useRef, useState } from 'react';
+import { Card, CardContent, CardMedia, Typography, Checkbox, Box, Chip } from '@mui/material';
 import { Asset } from '../../types/api';
 import { useDrag, useDrop } from 'react-dnd';
 import { ItemTypes, DndItem } from '../../types/dnd';
+import VersionPanel from '../organisms/VersionPanel';
 
 // Function to get thumbnail URL (copied from AssetCard_Old.tsx logic)
 const getThumbnailUrl = (asset: Asset): string => {
@@ -26,14 +27,22 @@ const getThumbnailUrl = (asset: Asset): string => {
 
 // Updated props
 interface AssetCardProps {
-  asset: Asset;
+  asset: Asset & { versionCount?: number };
   isSelected: boolean;
-  onClick: (event: React.MouseEvent) => void;
+  onClick: () => void;
   onGroup: (sourceId: number, targetId: number) => void;
+  onDataChange?: () => void;
 }
 
-const AssetCard: React.FC<AssetCardProps> = ({ asset, isSelected, onClick, onGroup }) => {
+const AssetCard: React.FC<AssetCardProps> = ({
+  asset,
+  isSelected,
+  onClick,
+  onGroup,
+  onDataChange
+}) => {
   const ref = useRef<HTMLDivElement>(null);
+  const [isVersionPanelOpen, setIsVersionPanelOpen] = useState(false);
 
   const [{ isDragging }, drag] = useDrag(() => ({
     type: ItemTypes.ASSET_CARD,
@@ -62,6 +71,18 @@ const AssetCard: React.FC<AssetCardProps> = ({ asset, isSelected, onClick, onGro
 
   drag(drop(ref));
 
+  const handleToggleVersionPanel = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    setIsVersionPanelOpen((prev) => !prev);
+  };
+
+  const handleVersionsChange = () => {
+    console.log(`Versions changed for asset ${asset.id}, requesting data refresh.`);
+    if (onDataChange) {
+      onDataChange();
+    }
+  };
+
   return (
     <Card
       ref={ref}
@@ -74,7 +95,7 @@ const AssetCard: React.FC<AssetCardProps> = ({ asset, isSelected, onClick, onGro
         display: 'flex',
         flexDirection: 'column',
         opacity: isDragging ? 0.5 : 1,
-        cursor: 'grab',
+        cursor: 'pointer',
         outline: isOver && canDrop ? `2px dashed ${'#1976d2'}` : 'none',
         outlineOffset: '2px',
       }}
@@ -89,18 +110,33 @@ const AssetCard: React.FC<AssetCardProps> = ({ asset, isSelected, onClick, onGro
           />
       )}
 
-      <CardMedia
-        component="img"
-        height="140"
-        image={thumbnailUrl}
-        alt={`Thumbnail for ${displayFilename}`}
-        sx={{
-          backgroundColor: 'grey.200',
-          objectFit: 'cover',
-          objectPosition: 'top'
-        }}
-        onError={(e) => console.error(`Failed to load image: ${thumbnailUrl}`, e)}
-      />
+      <Box sx={{ position: 'relative' }}>
+        <CardMedia
+          component="img"
+          height="140"
+          image={thumbnailUrl}
+          alt={`Thumbnail for ${displayFilename}`}
+          sx={{
+            backgroundColor: 'grey.200',
+            objectFit: 'cover',
+            objectPosition: 'top'
+          }}
+          onError={(e) => console.error(`Failed to load image: ${thumbnailUrl}`, e)}
+        />
+        {asset.versionCount && asset.versionCount > 1 && (
+            <Chip
+                label={`${asset.versionCount} Versions`}
+                size="small"
+                sx={{
+                    position: 'absolute', bottom: 4, right: 4,
+                    bgcolor: 'rgba(0, 0, 0, 0.7)', color: 'white',
+                    cursor: 'pointer',
+                    '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.9)' }
+                }}
+                onClick={handleToggleVersionPanel}
+            />
+        )}
+      </Box>
       <CardContent sx={{ py: 1, '&:last-child': { pb: 1 }, flexGrow: 1 }}>
         <Typography gutterBottom variant="body2" component="div" noWrap title={displayFilename}>
           {displayFilename}
@@ -109,6 +145,14 @@ const AssetCard: React.FC<AssetCardProps> = ({ asset, isSelected, onClick, onGro
           {asset.year || 'N/A'} | {asset.advertiser || '-'} | {asset.niche || '-'}
         </Typography>
       </CardContent>
+
+      {asset.id && (
+          <VersionPanel
+              masterAssetId={asset.id}
+              open={isVersionPanelOpen}
+              onVersionsChange={handleVersionsChange}
+          />
+      )}
     </Card>
   );
 };

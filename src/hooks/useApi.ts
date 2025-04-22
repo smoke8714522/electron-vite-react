@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react';
 import type {
-  Asset,
   ApiResponse,
   GetAssetsResponse,
   CreateAssetPayload,
@@ -14,7 +13,13 @@ import type {
   GetVersionsResponse,
   AddToGroupPayload,
   AddToGroupResponse,
-  IElectronAPI
+  IElectronAPI,
+  CreateVersionPayload,
+  CreateVersionResponse,
+  PromoteVersionPayload,
+  PromoteVersionResponse,
+  RemoveFromGroupPayload,
+  RemoveFromGroupResponse
 } from '../types/api';
 
 // Augment the Window interface
@@ -36,6 +41,7 @@ declare global {
 const safeApiCall = <P, R>(method: (payload: P) => Promise<ApiResponse<R>>) => 
   (payload: P): Promise<ApiResponse<R>> => {
     if (!window.api) {
+      console.error("Attempted to call API before it was ready/exposed.");
       return Promise.resolve({ success: false, error: 'API bridge not available' });
     }
     return method(payload);
@@ -48,19 +54,13 @@ const deleteAssetApi = safeApiCall<DeleteAssetPayload, DeleteAssetResponse['data
 const bulkImportAssetsApi = safeApiCall<void, BulkImportAssetsResponse['data']>(window.api.bulkImportAssets);
 const getVersionsApi = safeApiCall<GetVersionsPayload, GetVersionsResponse['data']>(window.api.getVersions);
 const addToGroupApi = safeApiCall<AddToGroupPayload, AddToGroupResponse['data']>(window.api.addToGroup);
+const createVersionApi = safeApiCall<CreateVersionPayload, CreateVersionResponse['data']>(window.api.createVersion);
+const promoteVersionApi = safeApiCall<PromoteVersionPayload, PromoteVersionResponse['data']>(window.api.promoteVersion);
+const removeFromGroupApi = safeApiCall<RemoveFromGroupPayload, RemoveFromGroupResponse['data']>(window.api.removeFromGroup);
 
 // --- Hook Implementation --- //
 
-interface AsyncState<T> {
-  loading: boolean;
-  error: string | null;
-  data: T | null;
-}
-
-type AsyncFn<Args extends any[], Res> = (...args: Args) => Promise<{ success: boolean; data?: Res; error?: string }>;
-
 // Generic hook to handle async API calls with loading/error states
-// Adjust TPayload to handle void explicitly
 function useAsyncCall<TResponseData = unknown, TPayload = any>(
   apiCall: (payload: TPayload) => Promise<ApiResponse<TResponseData>>
 ) {
@@ -126,6 +126,18 @@ export function useGetVersions() {
 
 export function useAddToGroup() {
   return useAsyncCall<AddToGroupResponse['data'], AddToGroupPayload>(addToGroupApi);
+}
+
+export function useCreateVersion() {
+  return useAsyncCall<CreateVersionResponse['data'], CreateVersionPayload>(createVersionApi);
+}
+
+export function usePromoteVersion() {
+  return useAsyncCall<PromoteVersionResponse['data'], PromoteVersionPayload>(promoteVersionApi);
+}
+
+export function useRemoveFromGroup() {
+  return useAsyncCall<RemoveFromGroupResponse['data'], RemoveFromGroupPayload>(removeFromGroupApi);
 }
 
 // Example of a combined hook (alternative approach)

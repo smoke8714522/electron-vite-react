@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import { shallow } from 'zustand/shallow';
 import { useStoreWithEqualityFn } from 'zustand/traditional';
-// import { Asset } from '../types/api'; // TODO: Unused import (eslint: @typescript-eslint/no-unused-vars) - Keep for type safety checks?
 
 // Define possible sort fields
 type SortableField = 'createdAt' | 'year' | 'advertiser' | 'niche' | 'shares';

@@ -1,7 +1,6 @@
 import React, { useCallback, CSSProperties } from 'react';
 import {
   Box,
-  // CircularProgress, // TODO: Unused import (eslint: @typescript-eslint/no-unused-vars)
   Alert,
   Typography,
   Skeleton
@@ -11,63 +10,62 @@ import { FixedSizeGrid } from 'react-window';
 import AssetCard from '../molecules/AssetCard';
 import {
   useSelection,
-  useAppActions
 } from '../../store/filterStore';
 import type { Asset } from '../../types/api'; // Need Asset type for props
 import { useAddToGroup } from '../../hooks/useApi'; // Import the hook
 
 // Type for the itemData prop passed to FixedSizeGrid
 interface GridItemData {
-  items: Asset[];
+  items: (Asset & { versionCount?: number })[]; // Expect items to have versionCount
   columnCount: number;
+  selectedIds: Set<number>;
+  // Pass down handlers from props
+  onAssetClick: (asset: Asset) => void;
+  onGroupHandler: (sourceId: number, targetId: number) => void;
+  onDataChange: () => void;
 }
 
 // Define props interface
 interface AssetGridProps {
-  assets: Asset[] | null | undefined;
+  assets: (Asset & { versionCount?: number })[] | null | undefined; // Expect assets with versionCount
   loading: boolean;
   error: string | null;
+  // Add props from LibraryView
+  onAssetClick: (asset: Asset) => void;
+  onDataChange: () => void;
 }
 
 const CARD_WIDTH = 180; // Includes spacing
 const CARD_HEIGHT = 240; // Includes spacing
 
-const AssetGrid: React.FC<AssetGridProps> = ({ assets, loading, error }) => {
+const AssetGrid: React.FC<AssetGridProps> = ({
+  assets,
+  loading,
+  error,
+  onAssetClick, // Receive from props
+  onDataChange // Receive from props
+}) => {
   const selectedIds = useSelection();
-  const { toggleSelected, setSelected } = useAppActions();
-  const { call: addToGroup } = useAddToGroup(); // Initialize the hook
+  const { call: addToGroup } = useAddToGroup();
 
-  const handleAssetClick = useCallback(
-    (assetId: number, event: React.MouseEvent) => {
-      if (event.ctrlKey || event.metaKey) {
-        toggleSelected(assetId);
-      } else {
-        setSelected([assetId]);
-        // TODO: Handle single click for opening Preview Modal
-        console.log(`Single click on asset ${assetId}`);
-      }
-    },
-    [toggleSelected, setSelected],
-  );
-
-  // Define the grouping handler
+  // Grouping handler remains local
   const handleGroupAssets = useCallback(async (sourceId: number, targetId: number) => {
     console.log(`AssetGrid handleGroupAssets: Source ${sourceId}, Target ${targetId}`);
     try {
       const result = await addToGroup({ sourceId, targetId });
       if (result.success) {
         console.log(`Successfully grouped asset ${sourceId} under ${targetId}`);
-        // TODO: Optionally trigger a refresh of assets here if needed
-        // refreshAssets(); // Assuming a function exists
+        // Trigger general data refresh after grouping
+        onDataChange();
       } else {
         console.error('Failed to group assets:', result.error);
-        // TODO: Show error to user (e.g., toast notification)
+        // TODO: Show error
       }
     } catch (err) {
       console.error('Error calling addToGroup:', err);
-      // TODO: Show error to user
+      // TODO: Show error
     }
-  }, [addToGroup]); // Add addToGroup to dependency array
+  }, [addToGroup, onDataChange]); // Added onDataChange dependency
 
   // --- Grid Cell Renderer ---
   const Cell = useCallback(
@@ -75,41 +73,33 @@ const AssetGrid: React.FC<AssetGridProps> = ({ assets, loading, error }) => {
       columnIndex: number;
       rowIndex: number;
       style: CSSProperties;
-      data: GridItemData & { handleGroupAssets: typeof handleGroupAssets }; // Add handler to itemData type
+      // Updated data type
+      data: GridItemData;
     }) => {
-      const { items, columnCount, handleGroupAssets: onGroupHandler } = data; // Extract handler
+      const { items, columnCount, selectedIds, onAssetClick, onGroupHandler, onDataChange } = data;
       const index = rowIndex * columnCount + columnIndex;
 
-      if (index >= items.length) {
-        return null; // Render nothing if index is out of bounds
-      }
-
+      if (index >= items.length) return null;
       const asset = items[index];
-      if (!asset) {
-        return null; // Should not happen, but good practice
-      }
+      if (!asset) return null;
+
+      // Adjust style height if needed based on dynamic content (difficult with FixedSizeGrid)
+      // For now, assume fixed size
 
       return (
-        <Box
-          style={style}
-          sx={{
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'flex-start',
-            padding: theme => theme.spacing(1),
-          }}
-        >
+        // Apply padding directly to the style passed by FixedSizeGrid
+        <Box style={{...style, padding: '8px' }}>
           <AssetCard
-            asset={asset}
+            asset={asset} // Pass asset with versionCount
             isSelected={selectedIds.has(asset.id)}
-            onClick={event => handleAssetClick(asset.id, event)}
-            // Pass the grouping handler down
-            onGroup={onGroupHandler} 
+            onClick={() => onAssetClick(asset)} // Pass down the handler from LibraryView
+            onGroup={onGroupHandler}
+            onDataChange={onDataChange} // Pass down the handler
           />
         </Box>
       );
     },
-    [selectedIds, handleAssetClick], // Keep existing dependencies, handleGroupAssets is passed via itemData
+    [] // Dependencies managed by itemData - refs are stable if passed via itemData
   );
 
   // --- Loading State ---
@@ -152,7 +142,17 @@ const AssetGrid: React.FC<AssetGridProps> = ({ assets, loading, error }) => {
       <AutoSizer>
         {({ height, width }) => {
           const columnCount = Math.max(1, Math.floor(width / CARD_WIDTH));
-          const rowCount = Math.ceil(assets.length / columnCount);
+          const rowCount = Math.ceil((assets?.length ?? 0) / columnCount);
+
+          // Correctly construct itemData with ALL fields from GridItemData
+          const itemData: GridItemData = {
+              items: assets || [],
+              columnCount,
+              selectedIds,
+              onAssetClick,
+              onGroupHandler: handleGroupAssets,
+              onDataChange
+          };
 
           return (
             <FixedSizeGrid
@@ -160,11 +160,13 @@ const AssetGrid: React.FC<AssetGridProps> = ({ assets, loading, error }) => {
               columnWidth={CARD_WIDTH}
               height={height}
               rowCount={rowCount}
+              // Adjust row height dynamically? Hard with FixedSizeGrid.
+              // Keep fixed for now, VersionPanel might overflow or be clipped.
+              // Consider VariableSizeGrid or alternatives if needed.
               rowHeight={CARD_HEIGHT}
               width={width}
-              // Pass handleGroupAssets down via itemData
-              itemData={{ items: assets, columnCount, handleGroupAssets }}
-              style={{ overflowX: 'hidden' }}
+              itemData={itemData} // Pass the correctly constructed itemData
+              style={{ overflowX: 'hidden' }} // Prevent horizontal scrollbar issues
             >
               {Cell}
             </FixedSizeGrid>
