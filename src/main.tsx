@@ -7,7 +7,7 @@ import theme from './theme/theme'; // Import the theme
 
 import './index.css'
 
-import './demos/ipc'
+// import './demos/ipc' // Comment out unused demo ipc setup
 // If you want use Node.js, the`nodeIntegration` needs to be enabled in the Main process.
 // import './demos/node'
 

@@ -1,27 +1,32 @@
 import { ipcRenderer, contextBridge } from 'electron'
+import type { IElectronAPI, CreateAssetPayload, UpdateAssetPayload, DeleteAssetPayload } from '../../src/types/api'
 
 // --------- Expose some API to the Renderer process ---------
-contextBridge.exposeInMainWorld('ipcRenderer', {
-  on(...args: Parameters<typeof ipcRenderer.on>) {
-    const [channel, listener] = args
-    return ipcRenderer.on(channel, (event, ...args) => listener(event, ...args))
-  },
-  off(...args: Parameters<typeof ipcRenderer.off>) {
-    const [channel, ...omit] = args
-    return ipcRenderer.off(channel, ...omit)
-  },
-  send(...args: Parameters<typeof ipcRenderer.send>) {
-    const [channel, ...omit] = args
-    return ipcRenderer.send(channel, ...omit)
-  },
-  invoke(...args: Parameters<typeof ipcRenderer.invoke>) {
-    const [channel, ...omit] = args
-    return ipcRenderer.invoke(channel, ...omit)
-  },
+// contextBridge.exposeInMainWorld('ipcRenderer', { 
+//   // ... existing ipcRenderer exposure (optional, can be removed if 'api' is preferred)
+// })
 
-  // You can expose other APTs you need here.
-  // ...
-})
+// Define the API structure
+const api: Partial<IElectronAPI> = {
+  // Assets
+  getAssets: (filters) => ipcRenderer.invoke('get-assets', filters),
+  createAsset: (payload: CreateAssetPayload) => ipcRenderer.invoke('create-asset', payload),
+  updateAsset: (payload: UpdateAssetPayload) => ipcRenderer.invoke('update-asset', payload),
+  deleteAsset: (payload: DeleteAssetPayload) => ipcRenderer.invoke('delete-asset', payload),
+
+  // Add bulk import
+  bulkImportAssets: () => ipcRenderer.invoke('bulk-import-assets'),
+
+  // Placeholder for other APIs (e.g., custom fields)
+}
+
+// Expose the API to the renderer process
+try {
+  contextBridge.exposeInMainWorld('api', api as IElectronAPI);
+  console.log('Preload: API exposed successfully');
+} catch (error) {
+  console.error('Preload Error exposing API:', error);
+}
 
 // --------- Preload scripts loading ---------
 function domReady(condition: DocumentReadyState[] = ['complete', 'interactive']) {
@@ -57,34 +62,40 @@ const safeDOM = {
  * https://projects.lukehaas.me/css-loaders
  * https://matejkustec.github.io/SpinThatShit
  */
-function useLoading() {
-  const className = `loaders-css__square-spin`
+async function useLoading(text = 'Loading') {
+  await domReady()
+
   const styleContent = `
-@keyframes square-spin {
-  25% { transform: perspective(100px) rotateX(180deg) rotateY(0); }
-  50% { transform: perspective(100px) rotateX(180deg) rotateY(180deg); }
-  75% { transform: perspective(100px) rotateX(0) rotateY(180deg); }
-  100% { transform: perspective(100px) rotateX(0) rotateY(0); }
-}
-.${className} > div {
-  animation-fill-mode: both;
-  width: 50px;
-  height: 50px;
-  background: #fff;
-  animation: square-spin 3s 0s cubic-bezier(0.09, 0.57, 0.49, 0.9) infinite;
-}
-.app-loading-wrap {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #282c34;
-  z-index: 9;
-}
+    .app-loading-wrap {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #1e1e1e; /* Dark background */
+      z-index: 9999;
+      color: #fff; /* White text */
+      font-family: sans-serif;
+      font-size: 1.2em;
+    }
+    .app-loading-text {
+      margin-left: 0.8em;
+    }
+    /* Simple spinner */
+    .spinner {
+      border: 4px solid rgba(255, 255, 255, 0.3);
+      border-left-color: #fff;
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
     `
   const oStyle = document.createElement('style')
   const oDiv = document.createElement('div')
@@ -92,7 +103,7 @@ function useLoading() {
   oStyle.id = 'app-loading-style'
   oStyle.innerHTML = styleContent
   oDiv.className = 'app-loading-wrap'
-  oDiv.innerHTML = `<div class="${className}"><div></div></div>`
+  oDiv.innerHTML = `<div class="spinner"></div><span class="app-loading-text">${text}...</span>`
 
   return {
     appendLoading() {
@@ -108,13 +119,22 @@ function useLoading() {
 
 // ----------------------------------------------------------------------
 
-const { appendLoading, removeLoading } = useLoading()
-domReady().then(appendLoading)
+// Wrap async operations in an IIFE to avoid top-level await
+(async () => {
+  try {
+    const { appendLoading, removeLoading } = await useLoading('Loading AdVault2');
+    appendLoading(); // Show loading indicator initially
 
-window.onmessage = (ev) => {
-  if (ev.data.payload === 'removeLoading') {
-    removeLoading()
+    window.onmessage = (ev) => {
+      if (ev.data.payload === 'removeLoading') {
+        removeLoading();
+      }
+    };
+
+    // Optional: Auto-remove after 5s
+    setTimeout(removeLoading, 4999);
+  } catch (error) {
+      console.error("Error during preload loading indicator setup:", error);
+      // Handle error appropriately, maybe show an error message in the DOM
   }
-}
-
-setTimeout(removeLoading, 4999)
+})();
