@@ -74,6 +74,8 @@ Follow these steps for features involving backend interaction:
 *   **API Calls (Renderer):** Use custom React Hooks from `src/hooks/useApi.ts` built upon the `useAsyncCall` pattern.
 *   **Database:** SQLite, accessed via `better-sqlite3` in the main process (likely within `/lib/services/dbService.ts`).
 *   **Testing:** Vitest. Place tests in `/test` mirroring `/src`. Run with `npm run test:unit`.
+    - Define all `vi.fn()` spies inside the `vi.mock()` factory to avoid hoisting/TDZ errors.
+    - Use `vi.mocked()` to cast imported mocks in TypeScript so methods like `mockReturnValue` are available.
 *   **Testing Library:** React Testing Library (`@testing-library/react`) for component tests.
 *   **TypeScript:** Strict mode enabled (`tsconfig.json`, `tsconfig.node.json`).
 *   **Build Tool:** Vite via `electron-vite` plugin.
