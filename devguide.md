@@ -100,3 +100,33 @@ Follow these steps for features needing backend interaction:
 *   Enhance user-facing error handling (e.g., snackbars).
 *   Add confirmation dialogs for destructive actions (e.g., Remove from Group).
 
+
+### Example: Versioning & Bulk Edit API Implementation
+
+The versioning and bulk edit features follow the core workflow described above. Here's a summary of the key additions:
+
+*   **DB Functions (`lib/db.ts`):**
+    *   `getAssetById(id)`: Helper to fetch a single asset.
+    *   `getAssetVersions(masterId)`: Retrieves all assets belonging to a version group (including the master).
+    *   `createVersion(masterId)`: Creates a new asset record linked to the `masterId`, copying metadata and assigning the next `version_no`. (Note: File duplication logic is separate).
+    *   `promoteVersion(versionId)`: Updates `master_id` and `version_no` fields within a version group to make the specified `versionId` the new master (version 1).
+    *   `removeFromGroup(versionId)`: Sets `master_id` to `NULL` and `version_no` to `1` for the given asset, making it standalone.
+    *   `bulkUpdateAssets(ids, fields)`: Updates specified fields (`year`, `advertiser`, `niche`, `shares`) for multiple asset IDs in a single transaction.
+*   **IPC Handlers (`electron/main/index.ts`):**
+    *   `ipcMain.handle('get-versions', ...)`: Calls `getAssetVersions`.
+    *   `ipcMain.handle('create-version', ...)`: Calls `createVersion`.
+    *   `ipcMain.handle('promote-version', ...)`: Calls `promoteVersion`.
+    *   `ipcMain.handle('remove-from-group', ...)`: Calls `removeFromGroup`.
+    *   `ipcMain.handle('bulk-update-assets', ...)`: Calls `bulkUpdateAssets`.
+    *   Each handler includes basic payload validation and returns a standard `ApiResponse`.
+*   **Preload (`electron/preload/index.ts`):**
+    *   The `api` object exposed via `contextBridge` includes mappings for `getVersions`, `createVersion`, `promoteVersion`, `removeFromGroup`, and `bulkUpdateAssets`, invoking the correct IPC channels.
+*   **Types (`src/types/api.ts`):**
+    *   Payload and Response interfaces (e.g., `GetVersionsPayload`, `GetVersionsResponse`, `BulkUpdatePayload`, `BulkUpdateResponse`) are defined.
+    *   The `IElectronAPI` interface includes the method signatures for the new functions.
+*   **API Hooks (`src/hooks/useApi.ts`):**
+    *   `useGetVersions`, `useCreateVersion`, `usePromoteVersion`, `useRemoveFromGroup`, and `useBulkUpdateAssets` hooks are implemented using the `useAsyncCall` pattern, wrapping the corresponding `window.api` calls.
+*   **UI Integration:**
+    *   `VersionPanel.tsx`: Uses `useGetVersions` to load data and `usePromoteVersion`, `useRemoveFromGroup`, `useCreateVersion` to trigger actions. Calls `onVersionsChange` callback on success.
+    *   `BulkEditModal.tsx`: Uses `useBulkUpdateAssets` in its save handler. Calls `onSaveSuccess` callback on success.
+

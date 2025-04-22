@@ -102,6 +102,29 @@ export interface AddToGroupPayload {
 }
 export type AddToGroupResponse = ApiResponse<null>; // Success/fail indication
 
+// --- Bulk Update --- New
+export interface BulkUpdatePayload {
+    ids: number[];
+    fields: Partial<Pick<Asset, 'year' | 'advertiser' | 'niche' | 'shares'>>; // Allow updating specific fields
+}
+export interface BulkUpdateResponse {
+    updatedCount: number;
+}
+
+// --- Master Asset Search --- New
+export interface GetMasterAssetsPayload {
+    searchTerm?: string;
+}
+export interface GetMasterAssetsResponse {
+    assets: Pick<Asset, 'id' | 'path'>[]; // Return only necessary fields
+}
+
+// --- File Dialog --- New
+export interface OpenFileDialogResponse {
+  filePaths?: string[]; // Array of selected file paths
+  canceled: boolean;
+}
+
 // Ensure Asset type includes master_id and version_no
 // ... existing code ...
 
@@ -114,6 +137,9 @@ export interface IElectronAPI {
   bulkImportAssets: () => Promise<BulkImportAssetsResponse>;
   getThumbnailUrl: (assetId: number) => string;
   
+  // Bulk Operations
+  bulkUpdateAssets: (payload: BulkUpdatePayload) => Promise<ApiResponse<BulkUpdateResponse>>;
+  
   // Add method for subscribing to view changes from main process menu
   // Takes a callback and returns a cleanup function
   onViewChange: (callback: (viewName: string) => void) => (() => void);
@@ -124,7 +150,11 @@ export interface IElectronAPI {
   promoteVersion: (payload: PromoteVersionPayload) => Promise<PromoteVersionResponse>;
   removeFromGroup: (payload: RemoveFromGroupPayload) => Promise<RemoveFromGroupResponse>;
   addToGroup: (payload: AddToGroupPayload) => Promise<AddToGroupResponse>;
+  getMasterAssets: (payload: GetMasterAssetsPayload) => Promise<ApiResponse<GetMasterAssetsResponse>>;
   // --- END Versioning and Grouping API ---
+  
+  // System / File Dialogs
+  showOpenDialog: () => Promise<OpenFileDialogResponse>;
   
   // Add other API methods here
 }

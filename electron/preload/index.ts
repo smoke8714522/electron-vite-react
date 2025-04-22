@@ -1,13 +1,6 @@
 import { ipcRenderer, contextBridge } from 'electron'
 import type {
-  IElectronAPI,
-  CreateAssetPayload,
-  UpdateAssetPayload,
-  DeleteAssetPayload,
-  GetVersionsPayload,
-  AddToGroupPayload,
-  // Add other payload types as needed
-} from '../../src/types/api'
+  IElectronAPI} from '../../src/types/api'
 
 // --------- Expose some API to the Renderer process ---------
 // contextBridge.exposeInMainWorld('ipcRenderer', { 
@@ -15,19 +8,28 @@ import type {
 // })
 
 // Define the API structure
-const api: Partial<IElectronAPI> = {
+const api: IElectronAPI = {
   // Assets
-  getAssets: (filters) => ipcRenderer.invoke('get-assets', filters),
-  createAsset: (payload: CreateAssetPayload) => ipcRenderer.invoke('create-asset', payload),
-  updateAsset: (payload: UpdateAssetPayload) => ipcRenderer.invoke('update-asset', payload),
-  deleteAsset: (payload: DeleteAssetPayload) => ipcRenderer.invoke('delete-asset', payload),
+  getAssets: (payload) => ipcRenderer.invoke('get-assets', payload),
+  createAsset: (payload) => ipcRenderer.invoke('create-asset', payload),
+  updateAsset: (payload) => ipcRenderer.invoke('update-asset', payload),
+  deleteAsset: (payload) => ipcRenderer.invoke('delete-asset', payload),
 
-  // Add bulk import
+  // Bulk Operations
   bulkImportAssets: () => ipcRenderer.invoke('bulk-import-assets'),
+  bulkUpdateAssets: (payload) => ipcRenderer.invoke('bulk-update-assets', payload),
+  // bulkDeleteAssets is optional in IElectronAPI, only add if implemented
 
-  // Placeholder for other APIs (e.g., custom fields)
-  getVersions: (payload: GetVersionsPayload) => ipcRenderer.invoke('get-versions', payload),
-  addToGroup: (payload: AddToGroupPayload) => ipcRenderer.invoke('add-to-group', payload),
+  // Versioning & Grouping
+  getVersions: (payload) => ipcRenderer.invoke('get-versions', payload),
+  createVersion: (payload) => ipcRenderer.invoke('create-version', payload),
+  promoteVersion: (payload) => ipcRenderer.invoke('promote-version', payload),
+  removeFromGroup: (payload) => ipcRenderer.invoke('remove-from-group', payload),
+  addToGroup: (payload) => ipcRenderer.invoke('add-to-group', payload),
+  getMasterAssets: (payload) => ipcRenderer.invoke('get-master-assets', payload),
+
+  // System / File Dialogs
+  showOpenDialog: () => ipcRenderer.invoke('show-open-dialog'),
 
   // Add listener for menu-driven view changes
   onViewChange: (callback: (viewName: string) => void) => {
@@ -43,11 +45,14 @@ const api: Partial<IElectronAPI> = {
       ipcRenderer.removeListener('change-view', handler);
     };
   },
+
+  // Other existing methods (ensure they match IElectronAPI)
+  getThumbnailUrl: (assetId) => `/thumbnails/${assetId}.jpg`, // Example implementation if it stays
 }
 
 // Expose the API to the renderer process
 try {
-  contextBridge.exposeInMainWorld('api', api as IElectronAPI);
+  contextBridge.exposeInMainWorld('api', api);
   console.log('Preload: API exposed successfully');
 } catch (error) {
   console.error('Preload Error exposing API:', error);
