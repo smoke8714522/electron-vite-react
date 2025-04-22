@@ -1,10 +1,10 @@
 import React, { useRef, useState } from 'react';
-import { Card, CardContent, CardMedia, Typography, Checkbox, Box, Chip } from '@mui/material';
+import { Card, CardContent, CardMedia, Typography, Checkbox, Box, Chip, Popover } from '@mui/material';
 import { Asset } from '../../types/api';
 import { useDrag, useDrop } from 'react-dnd';
 import { ItemTypes, DndItem } from '../../types/dnd';
-import VersionPanel from '../organisms/VersionPanel'; // Uncomment import
-import LayersIcon from '@mui/icons-material/Layers'; // Import an icon
+import VersionPanel from '../organisms/VersionPanel';
+import LayersIcon from '@mui/icons-material/Layers';
 
 // Function to get thumbnail URL (copied from AssetCard_Old.tsx logic)
 const getThumbnailUrl = (asset: Asset): string => {
@@ -44,7 +44,7 @@ const AssetCard: React.FC<AssetCardProps> = ({
   asset: { versionCount = 0 } // Destructure with default 0
 }) => {
   const ref = useRef<HTMLDivElement>(null);
-  const [isVersionPanelOpen, setIsVersionPanelOpen] = useState(false);
+  const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null);
 
   const [{ isDragging }, drag] = useDrag(() => ({
     type: ItemTypes.ASSET_CARD,
@@ -73,94 +73,121 @@ const AssetCard: React.FC<AssetCardProps> = ({
 
   drag(drop(ref));
 
-  const handleToggleVersionPanel = (event: React.MouseEvent) => {
+  const handleToggleVersionPanel = (event: React.MouseEvent<HTMLDivElement>) => {
     event.stopPropagation();
-    setIsVersionPanelOpen((prev) => !prev);
+    setAnchorEl(anchorEl ? null : event.currentTarget);
   };
 
-  // Restore handler - likely needed by the full VersionPanel component
   const handleVersionsChange = () => {
     console.log(`Versions changed for asset ${asset.id}, requesting data refresh.`);
     if (onDataChange) {
       onDataChange();
     }
+    setAnchorEl(null);
   };
 
-  return (
-    <Card
-      ref={ref}
-      onClick={onClick}
-      sx={{
-        position: 'relative',
-        border: isSelected ? '2px solid' : '2px solid transparent',
-        borderColor: isSelected ? 'primary.main' : 'transparent',
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        opacity: isDragging ? 0.5 : 1,
-        cursor: 'pointer',
-        outline: isOver && canDrop ? `2px dashed ${'#1976d2'}` : 'none',
-        outlineOffset: '2px',
-      }}
-    >
-      {isSelected && (
-         <Checkbox 
-            checked={isSelected}
-            size="small"
-            sx={{ position: 'absolute', top: 0, left: 0, zIndex: 1, p: 0.5, backgroundColor: 'rgba(255,255,255,0.7)' }}
-            onClick={(e) => e.stopPropagation()} 
-            readOnly
-          />
-      )}
+  const handleClosePopover = () => {
+    setAnchorEl(null);
+  };
 
-      <Box sx={{ position: 'relative' }}>
-        <CardMedia
-          component="img"
-          height="140"
-          image={thumbnailUrl}
-          alt={`Thumbnail for ${displayFilename}`}
-          sx={{
-            backgroundColor: 'grey.200',
-            objectFit: 'cover',
-            objectPosition: 'top'
-          }}
-          onError={(e) => console.error(`Failed to load image: ${thumbnailUrl}`, e)}
-        />
-        {/* Render chip if versionCount >= 0 */}
-        {versionCount >= 0 && (
-            <Chip
-                label={versionCount} // Show only the count
-                icon={<LayersIcon sx={{ fontSize: '1rem' }} />} // Add icon
-                size="small"
-                sx={{
-                    position: 'absolute', bottom: 4, right: 4,
-                    bgcolor: 'rgba(0, 0, 0, 0.7)', color: 'white',
-                    cursor: 'pointer',
-                    '& .MuiChip-icon': { color: 'white' }, // Ensure icon color matches label
-                    '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.9)' }
-                }}
-                onClick={handleToggleVersionPanel} // Ensure this toggles the state
+  const open = Boolean(anchorEl);
+  const popoverId = open ? `version-popover-${asset.id}` : undefined;
+
+  return (
+    <>
+      <Card
+        ref={ref}
+        onClick={onClick}
+        sx={{
+          position: 'relative',
+          border: isSelected ? '2px solid' : '2px solid transparent',
+          borderColor: isSelected ? 'primary.main' : 'transparent',
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          opacity: isDragging ? 0.5 : 1,
+          cursor: 'pointer',
+          outline: isOver && canDrop ? `2px dashed ${'#1976d2'}` : 'none',
+          outlineOffset: '2px',
+        }}
+      >
+        {isSelected && (
+           <Checkbox 
+              checked={isSelected}
+              size="small"
+              sx={{ position: 'absolute', top: 0, left: 0, zIndex: 1, p: 0.5, backgroundColor: 'rgba(255,255,255,0.7)' }}
+              onClick={(e) => e.stopPropagation()} 
+              readOnly
             />
         )}
-      </Box>
-      <CardContent sx={{ py: 1, '&:last-child': { pb: 1 }, flexGrow: 1 }}>
-        <Typography gutterBottom variant="body2" component="div" noWrap title={displayFilename}>
-          {displayFilename}
-        </Typography>
-        <Typography variant="caption" color="text.secondary" noWrap>
-          {asset.year || 'N/A'} | {asset.advertiser || '-'} | {asset.niche || '-'}
-        </Typography>
-      </CardContent>
 
-      {/* Render the actual VersionPanel */}
+        <Box sx={{ position: 'relative' }}>
+          <CardMedia
+            component="img"
+            height="140"
+            image={thumbnailUrl}
+            alt={`Thumbnail for ${displayFilename}`}
+            sx={{
+              backgroundColor: 'grey.200',
+              objectFit: 'cover',
+              objectPosition: 'top'
+            }}
+            onError={(e) => console.error(`Failed to load image: ${thumbnailUrl}`, e)}
+          />
+          {versionCount >= 0 && (
+              <Chip
+                  aria-describedby={popoverId}
+                  label={versionCount}
+                  icon={<LayersIcon sx={{ fontSize: '1rem' }} />}
+                  size="small"
+                  sx={{
+                      position: 'absolute', bottom: 4, right: 4,
+                      bgcolor: 'rgba(0, 0, 0, 0.7)', color: 'white',
+                      cursor: 'pointer',
+                      '& .MuiChip-icon': { color: 'white' },
+                      '&:hover': { bgcolor: 'rgba(0, 0, 0, 0.9)' }
+                  }}
+                  onClick={handleToggleVersionPanel}
+              />
+          )}
+        </Box>
+        <CardContent sx={{ py: 1, '&:last-child': { pb: 1 }, flexGrow: 1 }}>
+          <Typography gutterBottom variant="body2" component="div" noWrap title={displayFilename}>
+            {displayFilename}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" noWrap>
+            {asset.year || 'N/A'} | {asset.advertiser || '-'} | {asset.niche || '-'}
+          </Typography>
+        </CardContent>
+      </Card>
+
       {asset.id && (
+        <Popover
+          id={popoverId}
+          open={open}
+          anchorEl={anchorEl}
+          onClose={handleClosePopover}
+          anchorOrigin={{
+            vertical: 'bottom',
+            horizontal: 'right',
+          }}
+          transformOrigin={{
+            vertical: 'top',
+            horizontal: 'right',
+          }}
+          PaperProps={{
+            sx: { 
+            }
+          }}
+        >
           <VersionPanel
               masterAssetId={asset.id}
-              open={isVersionPanelOpen}
+              open={open} 
               onVersionsChange={handleVersionsChange}
           />
+        </Popover>
       )}
-    </Card>
+    </>
   );
 };
 

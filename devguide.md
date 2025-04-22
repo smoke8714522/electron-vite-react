@@ -58,12 +58,6 @@ Follow these steps for features needing backend interaction:
 6.  **UI (`/src/pages`, `/src/components`):** Call the new hook from your React component. Use the hook's state (`loading`, `error`, `data`) and `call` function.
 7.  **State/Refresh:** If the action affects shared state or requires a data refresh in other components, use callbacks (e.g., `onDataChange`) passed down from parent views (like `LibraryView`) to trigger state updates or refetches (e.g., re-calling `fetchAssets` from `useGetAssets`).
 
-*   **Example Stubs (Step 1):**
-    *   Created `src/components/organisms/BulkEditModal.tsx` with basic form fields and console logging.
-    *   Integrated `BulkEditModal` into `LibraryToolbar.tsx`, controlling its visibility with state.
-    *   Added `versionCount` prop (defaulting to 0) to `AssetCard.tsx`.
-    *   Added a `<Chip>` to `AssetCard.tsx` displaying `versionCount` and toggling a simple "Loading..." placeholder (`VersionPanel` stub).
-
 ## 4. Key Libraries & Patterns
 
 *   **UI Framework:** React 18+ / TypeScript.
@@ -90,10 +84,13 @@ Follow these steps for features needing backend interaction:
 
 ## 6. Key Concepts Illustrated (Examples from Versioning/Editing Features)
 
-*   **Modal Control:** Parent views (`LibraryView`) manage state (`isOpen`, `selectedAsset`) for modals (`TagEditorModal`).
+*   **Modal Control:** Parent views (`LibraryView`) manage state (`isOpen`, `selectedAsset`) for modals (`TagEditorModal`). This pattern was also used for the initial `BulkEditModal` stub, where `LibraryToolbar` managed its open state.
 *   **Component Data Fetching:** Complex components (`VersionPanel`) can fetch their own data using dedicated API hooks (`useGetVersions`).
 *   **Callback Propagation:** Actions in nested components (`VersionPanel` -> `AssetCard` -> `AssetGrid` -> `LibraryView`) trigger data refreshes in the top-level view via callbacks (`onVersionsChange` -> `onDataChange` -> `fetchAssets`).
 *   **Backend Logic:** Complex operations like `promote-version` involve DB transactions handled in `lib/db.ts` and exposed via a single IPC call.
+*   **UI Scaffolding & Iteration:**
+    *   A stub `BulkEditModal.tsx` was created first with basic form elements.
+    *   The `AssetCard.tsx` initially displayed version info via a `<Chip>` that toggled the `VersionPanel` using a `Popover` to avoid grid layout issues.
 
 ## 7. Known Issues / TODOs
 
