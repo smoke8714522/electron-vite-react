@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
   Box,
   Drawer,
@@ -17,6 +17,14 @@ import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import PersonIcon from '@mui/icons-material/Person';
 import LabelIcon from '@mui/icons-material/Label';
 import ShareIcon from '@mui/icons-material/Share';
+import {
+  useYearFilter,
+  useAdvertiserFilter,
+  useNicheFilter,
+  useSharesRangeFilter,
+  useSearchTermFilter,
+  useAppActions
+} from '../../store/filterStore';
 
 const drawerWidth = 240;
 
@@ -24,6 +32,34 @@ const drawerWidth = 240;
 // interface FilterSidebarProps {}
 
 const FilterSidebar: React.FC = () => {
+  const year = useYearFilter();
+  const advertiser = useAdvertiserFilter();
+  const niche = useNicheFilter();
+  const sharesRange = useSharesRangeFilter();
+  const searchTerm = useSearchTermFilter();
+  const { setYear, setAdvertiser, setNiche, setSharesRange, setSearchTerm } = useAppActions();
+
+  const handleYearChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+    setYear(value ? parseInt(value, 10) : undefined);
+  }, [setYear]);
+
+  const handleAdvertiserChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setAdvertiser(event.target.value);
+  }, [setAdvertiser]);
+
+  const handleNicheChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setNiche(event.target.value);
+  }, [setNiche]);
+
+  const handleSharesChange = useCallback((_event: Event, newValue: number | number[]) => {
+    setSharesRange(newValue as [number, number]);
+  }, [setSharesRange]);
+
+  const handleSearchChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(event.target.value);
+  }, [setSearchTerm]);
+
   return (
     <Drawer
       variant="permanent"
@@ -33,55 +69,79 @@ const FilterSidebar: React.FC = () => {
         [`& .MuiDrawer-paper`]: {
           width: drawerWidth,
           boxSizing: 'border-box',
-          position: 'relative', // Keep it in the flow of the flex container
+          position: 'relative',
           height: '100%',
         },
       }}
     >
-      <Box sx={{ p: 2 }}>
+      <Box sx={{ p: 2, overflowY: 'auto' }}>
         <Typography variant="h6" gutterBottom>
           Filters
         </Typography>
 
-        {/* Placeholder Filter Sections */}
         <List dense>
           <ListItem disablePadding>
             <ListItemIcon sx={{minWidth: 32}}><CalendarTodayIcon fontSize="small" /></ListItemIcon>
             <ListItemText primary="Year" />
           </ListItem>
-          <TextField size="small" variant="outlined" placeholder="e.g., 2023" fullWidth sx={{mb: 1.5}} />
+          <TextField 
+            type="number"
+            value={year ?? ''}
+            onChange={handleYearChange}
+            size="small" 
+            variant="outlined" 
+            placeholder="e.g., 2023" 
+            fullWidth sx={{mb: 1.5}} 
+          />
 
           <ListItem disablePadding>
             <ListItemIcon sx={{minWidth: 32}}><PersonIcon fontSize="small" /></ListItemIcon>
             <ListItemText primary="Advertiser" />
           </ListItem>
-          <TextField size="small" variant="outlined" placeholder="e.g., Nike" fullWidth sx={{mb: 1.5}} />
+          <TextField 
+            value={advertiser ?? ''}
+            onChange={handleAdvertiserChange}
+            size="small" 
+            variant="outlined" 
+            placeholder="e.g., Nike" 
+            fullWidth sx={{mb: 1.5}} 
+          />
 
           <ListItem disablePadding>
             <ListItemIcon sx={{minWidth: 32}}><LabelIcon fontSize="small" /></ListItemIcon>
             <ListItemText primary="Niche" />
           </ListItem>
-          <TextField size="small" variant="outlined" placeholder="e.g., Sports" fullWidth sx={{mb: 1.5}} />
+          <TextField 
+            value={niche ?? ''}
+            onChange={handleNicheChange}
+            size="small" 
+            variant="outlined" 
+            placeholder="e.g., Sports" 
+            fullWidth sx={{mb: 1.5}} 
+          />
 
           <ListItem disablePadding>
             <ListItemIcon sx={{minWidth: 32}}><ShareIcon fontSize="small" /></ListItemIcon>
             <ListItemText primary="Shares" />
           </ListItem>
           <Slider
-            defaultValue={0}
+            value={sharesRange}
+            onChange={handleSharesChange}
             aria-labelledby="shares-slider"
             valueLabelDisplay="auto"
             step={1000}
             marks
             min={0}
-            max={100000} // Example max
-            sx={{mb: 1.5}}
+            max={100000}
+            sx={{mb: 1.5, width: '95%', mx: 'auto'}}
           />
 
           <Divider sx={{ my: 1 }} />
 
           <ListItemText primary="Search Tags" />
           <TextField
+            value={searchTerm ?? ''}
+            onChange={handleSearchChange}
             size="small"
             variant="outlined"
             placeholder="Search..."
