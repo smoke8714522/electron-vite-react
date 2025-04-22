@@ -29,6 +29,7 @@ import {
 } from '../../hooks/useApi';
 import type { ApiResponse, Asset } from '../../types/api';
 import type { ViewMode } from '../../pages/LibraryView';
+import ActionButton from '../atoms/ActionButton';
 
 type SortableField = 'createdAt' | 'year' | 'advertiser' | 'niche' | 'shares';
 
@@ -38,11 +39,11 @@ interface LibraryToolbarProps {
   onRefreshNeeded: () => Promise<ApiResponse<Asset[] | undefined>>;
 }
 
-const LibraryToolbar: React.FC<LibraryToolbarProps> = ({ 
+const LibraryToolbar = ({ 
   view, 
   onViewChange, 
   onRefreshNeeded 
-}) => {
+}: LibraryToolbarProps) => {
   const sortBy = useSortBy();
   const selectedIds = useSelection();
   const selectionCount = useSelectionCount();
@@ -92,8 +93,11 @@ const LibraryToolbar: React.FC<LibraryToolbarProps> = ({
     }
   }, [selectedIds, selectionCount, callDeleteAsset, clearSelection, onRefreshNeeded]);
 
+  const handleEditTagsClick = useCallback(() => {
+      console.log('Trigger Bulk Edit Modal for IDs:', Array.from(selectedIds));
+  }, [selectedIds]);
+
   const actionsDisabled = selectionCount === 0;
-  const deleteInProgress = deleting;
 
   return (
     <Box
@@ -113,40 +117,31 @@ const LibraryToolbar: React.FC<LibraryToolbarProps> = ({
             <Typography variant="body2" sx={{ mr: 1 }}>
               {selectionCount} selected
             </Typography>
-            <Button 
-              variant="outlined" 
-              size="small" 
-              startIcon={<EditIcon />} 
+            <ActionButton 
+              icon={<EditIcon fontSize="small" />}
+              label="Edit Tags"
               disabled={actionsDisabled}
-              onClick={() => console.log('Trigger Bulk Edit Modal')}
-            >
-              Edit Tags
-            </Button>
-            <Button 
-              variant="outlined" 
-              size="small" 
-              color="error" 
-              startIcon={deleteInProgress ? <CircularProgress size={16} color="inherit" /> : <DeleteIcon />} 
-              disabled={actionsDisabled || deleteInProgress}
+              onClick={handleEditTagsClick}
+            />
+            <ActionButton 
+              icon={<DeleteIcon fontSize="small" />} 
+              label="Delete"
+              loading={deleting} 
+              disabled={actionsDisabled}
               onClick={handleDeleteClick}
-            >
-              {deleteInProgress ? 'Deleting...' : 'Delete'}
-            </Button>
+            />
           </>
         )}
       </Box>
 
       <Box sx={{ flexGrow: 1 }} />
 
-      <Button 
-        variant="outlined" 
-        size="small" 
-        startIcon={importing ? <CircularProgress size={16} color="inherit" /> : <UploadFileIcon />}
-        disabled={importing}
+      <ActionButton 
+        icon={<UploadFileIcon fontSize="small" />}
+        label="Bulk Import"
+        loading={importing}
         onClick={handleBulkImportClick}
-      >
-        {importing ? 'Importing...' : 'Bulk Import'}
-      </Button>
+      />
 
       <FormControl size="small" sx={{ minWidth: 120 }}>
         <InputLabel id="sort-select-label">Sort By</InputLabel>

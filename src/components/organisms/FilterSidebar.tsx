@@ -25,13 +25,14 @@ import {
   useSearchTermFilter,
   useAppActions
 } from '../../store/filterStore';
+import FilterField from '../atoms/FilterField';
 
 const drawerWidth = 240;
 
 // No props needed for static layout yet
 // interface FilterSidebarProps {}
 
-const FilterSidebar: React.FC = () => {
+const FilterSidebar = () => {
   const year = useYearFilter();
   const advertiser = useAdvertiserFilter();
   const niche = useNicheFilter();
@@ -39,17 +40,16 @@ const FilterSidebar: React.FC = () => {
   const searchTerm = useSearchTermFilter();
   const { setYear, setAdvertiser, setNiche, setSharesRange, setSearchTerm } = useAppActions();
 
-  const handleYearChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const value = event.target.value;
-    setYear(value ? parseInt(value, 10) : undefined);
+  const handleYearChange = useCallback((value: string | number) => {
+    setYear(typeof value === 'number' ? value : undefined);
   }, [setYear]);
 
-  const handleAdvertiserChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    setAdvertiser(event.target.value);
+  const handleAdvertiserChange = useCallback((value: string | number) => {
+    setAdvertiser(typeof value === 'string' ? value : '');
   }, [setAdvertiser]);
 
-  const handleNicheChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    setNiche(event.target.value);
+  const handleNicheChange = useCallback((value: string | number) => {
+    setNiche(typeof value === 'string' ? value : '');
   }, [setNiche]);
 
   const handleSharesChange = useCallback((_event: Event, newValue: number | number[]) => {
@@ -80,44 +80,24 @@ const FilterSidebar: React.FC = () => {
         </Typography>
 
         <List dense>
-          <ListItem disablePadding>
-            <ListItemIcon sx={{minWidth: 32}}><CalendarTodayIcon fontSize="small" /></ListItemIcon>
-            <ListItemText primary="Year" />
-          </ListItem>
-          <TextField 
+          <FilterField
+            icon={<CalendarTodayIcon fontSize="small" />}
+            label="Year"
             type="number"
             value={year ?? ''}
             onChange={handleYearChange}
-            size="small" 
-            variant="outlined" 
-            placeholder="e.g., 2023" 
-            fullWidth sx={{mb: 1.5}} 
           />
-
-          <ListItem disablePadding>
-            <ListItemIcon sx={{minWidth: 32}}><PersonIcon fontSize="small" /></ListItemIcon>
-            <ListItemText primary="Advertiser" />
-          </ListItem>
-          <TextField 
+          <FilterField
+            icon={<PersonIcon fontSize="small" />}
+            label="Advertiser"
             value={advertiser ?? ''}
             onChange={handleAdvertiserChange}
-            size="small" 
-            variant="outlined" 
-            placeholder="e.g., Nike" 
-            fullWidth sx={{mb: 1.5}} 
           />
-
-          <ListItem disablePadding>
-            <ListItemIcon sx={{minWidth: 32}}><LabelIcon fontSize="small" /></ListItemIcon>
-            <ListItemText primary="Niche" />
-          </ListItem>
-          <TextField 
+          <FilterField
+            icon={<LabelIcon fontSize="small" />}
+            label="Niche"
             value={niche ?? ''}
             onChange={handleNicheChange}
-            size="small" 
-            variant="outlined" 
-            placeholder="e.g., Sports" 
-            fullWidth sx={{mb: 1.5}} 
           />
 
           <ListItem disablePadding>
