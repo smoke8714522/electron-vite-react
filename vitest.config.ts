@@ -5,5 +5,8 @@ export default defineConfig({
     root: __dirname,
     include: ['test/**/*.{test,spec}.?(c|m)[jt]s?(x)'],
     testTimeout: 1000 * 29,
+    environment: 'jsdom',
+    setupFiles: ['./test/setup.ts'],
+    globals: true,
   },
 })

@@ -1,6 +1,5 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import '@testing-library/jest-dom';
 import ActionButton from '../../src/components/atoms/ActionButton';
 import SaveIcon from '@mui/icons-material/Save';
 

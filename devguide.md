@@ -70,9 +70,11 @@ Follow these steps for features involving backend interaction:
 *   **UI Framework:** React 18+ with TypeScript.
 *   **Component Library:** Material UI (MUI) v5. Use `sx` prop or `styled()` for styling.
 *   **State Management:** Zustand (`src/store/filterStore.ts` for main app state). Access via provided selector hooks (e.g., `useYearFilter`, `useSelectionCount`, `useAppActions`).
+*   **Virtualization:** `react-window` and `react-virtualized-auto-sizer` for performant rendering of large lists/grids (`AssetGrid.tsx`, `AssetList.tsx`). Installed via `npm install react-window react-virtualized-auto-sizer`.
 *   **API Calls (Renderer):** Use custom React Hooks from `src/hooks/useApi.ts` built upon the `useAsyncCall` pattern.
 *   **Database:** SQLite, accessed via `better-sqlite3` in the main process (likely within `/lib/services/dbService.ts`).
 *   **Testing:** Vitest. Place tests in `/test` mirroring `/src`. Run with `npm run test:unit`.
+*   **Testing Library:** React Testing Library (`@testing-library/react`) for component tests.
 *   **TypeScript:** Strict mode enabled (`tsconfig.json`, `tsconfig.node.json`).
 *   **Build Tool:** Vite via `electron-vite` plugin.
 
@@ -86,3 +88,44 @@ Follow these steps for features involving backend interaction:
 *   Build for production: `npm run build`
 
 *(Refer to `package.json` for all scripts)*.
+
+## 6. UI Implementation Notes
+
+### Virtualized Views (AssetGrid / AssetList)
+
+To handle potentially thousands of assets efficiently, the `AssetGrid` and `AssetList` components use `react-window` for virtualization.
+
+*   **Wrapping:** Both components are wrapped in `AutoSizer` from `react-virtualized-auto-sizer` to dynamically determine the available width and height.
+*   **Core Component:**
+    *   `AssetGrid` uses `FixedSizeGrid`. It calculates the number of columns based on available width and a fixed card width.
+    *   `AssetList` uses `FixedSizeList`. It renders items with a fixed row height.
+*   **Item Rendering:** A `Cell` (for Grid) or `Row` (for List) function is passed to the `react-window` component. This function receives `index`, `style` (for absolute positioning), and `data` (containing the items array). It's responsible for rendering the actual `AssetCard` (or a list-specific item) for the given index.
+*   **Data Passing:** Asset data (`items`) and potentially other context (like selection handlers or state) are passed down via the `itemData` prop of the `FixedSizeGrid`/`FixedSizeList`.
+
+```tsx
+// Example Structure (AssetGrid.tsx)
+import AutoSizer from 'react-virtualized-auto-sizer';
+import { FixedSizeGrid } from 'react-window';
+// ... other imports
+
+const AssetGrid = ({ assets, ... }) => {
+  const Cell = ({ columnIndex, rowIndex, style, data }) => { /* Render AssetCard */ };
+
+  return (
+    <AutoSizer>
+      {({ height, width }) => (
+        <FixedSizeGrid /* column/row counts, sizes */ itemData={{ items: assets }}>{Cell}</FixedSizeGrid>
+      )}
+    </AutoSizer>
+  );
+}
+```
+
+### View Toggling (LibraryView / LibraryToolbar)
+
+The ability to switch between Grid and List view is managed as follows:
+
+1.  **State:** The `LibraryView` component holds the current view mode (`'grid'` or `'list'`) in its local state using `useState`.
+2.  **Props:** `LibraryView` passes the current `view` state and the state setter function (`onViewChange`) down to the `LibraryToolbar`.
+3.  **Toggle:** `LibraryToolbar` uses an MUI `ToggleButtonGroup` controlled by the `view` prop. When a toggle button is clicked, it calls the `onViewChange` prop function (passed down from `LibraryView`) with the new view mode ('grid' or 'list').
+4.  **Conditional Rendering:** `LibraryView` uses the `view` state to conditionally render either the `<AssetGrid />` or `<AssetList />` component.
