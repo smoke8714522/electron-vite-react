@@ -7,27 +7,29 @@ This document outlines the setup and common tasks for developing the AdVault2 ap
 ```
 /  
 ├── src/  
-│   ├── components/       # Reusable UI components (atoms, molecules, organisms)  
-│   ├── containers/       # Stateful views & data fetching (May contain older views like LibraryView_Old)  
-│   ├── hooks/            # Custom React hooks (e.g. useAssets, useApi)  
-│   ├── store/            # Zustand stores  
+│   ├── components/       # Reusable UI components (atoms, molecules, organisms)
+│   │   ├── molecules/    # e.g., AssetCard.tsx
+│   │   └── organisms/    # e.g., FilterSidebar.tsx, LibraryToolbar.tsx, AssetGrid.tsx
+│   ├── containers/       # Stateful views & data fetching (Legacy - may contain _Old files)
+│   ├── hooks/            # Custom React hooks (e.g., useApi.ts)
+│   ├── store/            # Zustand stores (e.g., filterStore.ts -> useAppStore)
 │   ├── theme/            # MUI theme overrides & tokens  
-│   ├── pages/            # Top‑level views (NewLibraryView, Settings)  
-│   ├── types/            # Shared TypeScript types (e.g., api.ts)  
+│   ├── pages/            # Top‑level views (e.g., LibraryView.tsx, SettingsView.tsx)
+│   ├── types/            # Shared TypeScript types (e.g., api.ts)
 │   └── preload.ts        # Electron preload script (contextBridge)  
-├── lib/                  # Electron main process code (IPC handlers, ThumbnailService)  
+├── lib/                  # Electron main process code (IPC handlers, ThumbnailService)
 ├── electron/             # Electron-Vite specific config/build files  
 │   ├── main/             # Main process source (might contain index.ts)  
 │   └── preload/          # Preload script source (might contain index.ts)  
-├── vault/                  ← user's raw asset folder (user-chosen or default under Documents)  
-├── data/               ← Electron's app.getPath('userData')  
-│   ├── db.sqlite           ← SQLite database   
+├── vault/                  ← User's raw asset folder (user-chosen or default under Documents)
+├── data/                 ← Electron's app.getPath('userData')  
+│   └── db.sqlite           ← SQLite database   
 ├── cache/                  ← Base cache directory (inside project root or userData)
-│   └── thumbnails/         ← Generated `<id>.jpg` files (Plural)
+│   └── thumbnails/         ← Generated `<id>.jpg` files
 ├── logs/                   ← Log directory (inside project root or userData)
 │   └── app.log             ← Rotated application logs  
 ├── scripts/                ← One-off utilities (importVault.js, backup.js)  
-├── docs/                   ← appflow.md, frontend.md, backend.md, developer_guide.md  
+├── docs/                   ← appflow.md, frontend.md, backend.md, devguide.md  
 ├── package.json
 └── README.md  
 ```
@@ -112,76 +114,83 @@ This document outlines the setup and common tasks for developing the AdVault2 ap
 
 5.  **Renderer Hook (`useApi.ts`)**
     - Edit `src/hooks/useApi.ts`.
-    - **Important**: To ensure function reference stability and prevent infinite loops with `useEffect`, define the actual `window.api` calls outside the specific hook definitions. Use a helper or define them as constants.
+    - Ensure the API call function (e.g., `myNewFeatureApi`) is defined stably outside the hook using `safeApiCall`.
+    - Create a specific hook (e.g., `useMyNewFeature`) using the generic `useAsyncCall` hook, passing the stable API function reference.
       ```ts
       // src/hooks/useApi.ts
-      import type { ..., IElectronAPI, ApiResponse, MyNewFeaturePayload, MyNewFeatureResponse } from '../types/api';
+      // ... imports ...
 
       // Define stable API call wrappers
-      const safeApiCall = <P, R>(method: (payload: P) => Promise<ApiResponse<R>>) => /* ... see implementation ... */ ;
-
-      const myNewFeatureApi = safeApiCall<MyNewFeaturePayload, MyNewFeatureResponse['data']>(window.api.myNewFeature);
-      const getAssetsApi = safeApiCall<any | undefined, GetAssetsResponse['data']>(window.api.getAssets);
-      const bulkImportAssetsApi = safeApiCall<void, BulkImportAssetsResponse['data']>(window.api.bulkImportAssets);
+      const myNewFeatureApi = safeApiCall<MyPayload, MyResponseData>(window.api.myNewFeature);
 
       // Generic hook (remains the same)
-      function useAsyncCall<TResponseData = unknown, TPayload = any>(
-        apiCall: (payload: TPayload) => Promise<ApiResponse<TResponseData>>
-      ) { /* ... implementation ... */ }
+      function useAsyncCall<TResponseData, TPayload>(...) { /* ... */ }
 
-      // Specific hooks now pass the stable references
+      // Specific hook
       export function useMyNewFeature() {
         return useAsyncCall(myNewFeatureApi);
       }
-      export function useGetAssets() {
-        return useAsyncCall(getAssetsApi);
-      }
-      export function useBulkImportAssets() {
-        return useAsyncCall(bulkImportAssetsApi);
-      }
       ```
 
-6.  **UI Component / Container**
-    - In `/src/containers` or `/src/pages`, import and use your hook:
+6.  **UI Component / Page**
+    - Typically in a component within `/src/components/*` or a view within `/src/pages/*`.
+    - **Navigation between major views** (like Library, Settings) is handled via the **native Electron menu** (defined in `electron/main/index.ts`). The menu sends IPC messages (`change-view`) which are received in `src/App.tsx` to control which page component is rendered.
+    - **Import necessary state/actions** from the Zustand store (`src/store/filterStore.ts`) using selector hooks (e.g., `useAssetQuery`, `useSelection`, `useAppActions`) for features *within* a view.
+    - **Import necessary API hooks** from `src/hooks/useApi.ts` (e.g., `useGetAssets`, `useMyNewFeature`).
+    - Use `useEffect` to trigger data fetching based on state changes (e.g., filters from `useAssetQuery`).
+    - Connect UI elements (`Button`, `TextField`, etc.) to state values and action handlers (using `useCallback` for handlers passed as props).
+
       ```tsx
-      import React, { useEffect } from 'react';
-      import { useGetAssets, useBulkImportAssets } from '../hooks/useApi';
-      import { Button, CircularProgress, Alert } from '@mui/material';
+      // Example: src/pages/SomeFeaturePage.tsx
+      import React, { useEffect, useCallback } from 'react';
+      import { Box, Button, CircularProgress, Alert } from '@mui/material';
+      import { useMyNewFeature, useGetAssets } from '../hooks/useApi';
+      import { useAssetQuery, useAppActions } from '../store/filterStore';
 
-      function FeatureComponent() {
-        const { call: fetchAssets, loading: loadingAssets, error: errorAssets, data: assets } = useGetAssets();
-        const { call: callBulkImport, loading: importing, error: importError } = useBulkImportAssets();
+      function SomeFeaturePage() {
+        // Zustand state/actions
+        const assetQuery = useAssetQuery();
+        const { clearSelection } = useAppActions();
+        
+        // API hooks
+        const { call: callMyFeature, loading: featureLoading, error: featureError } = useMyNewFeature();
+        const { call: fetchAssets, loading: assetsLoading, error: assetsError, data: assets } = useGetAssets();
 
-        // Fetch data on mount - fetchAssets reference is now stable
+        // Fetch assets based on query from Zustand store
         useEffect(() => {
-          fetchAssets(undefined);
-        }, [fetchAssets]);
+          fetchAssets(assetQuery);
+        }, [fetchAssets, assetQuery]);
 
-        const handleImport = async () => {
-          // callBulkImport reference is stable, no args needed for void payload
-          const result = await callBulkImport(); 
-          if (result.success) { /* ... */ }
-        };
+        const handleFeatureClick = useCallback(async () => {
+          const result = await callMyFeature({ /* payload */ });
+          if (result.success) { 
+            // Handle success, maybe clear selection or refresh data
+            clearSelection();
+            fetchAssets(assetQuery); 
+          }
+        }, [callMyFeature, clearSelection, fetchAssets, assetQuery]);
 
         return (
-          <div>
-            {/* Example usage */} 
-            <Button onClick={handleImport} disabled={importing || loadingAssets}>
-              {importing ? <CircularProgress size={20}/> : 'Bulk Import'}
+          <Box>
+            <Button onClick={handleFeatureClick} disabled={featureLoading || assetsLoading}>
+              {featureLoading ? <CircularProgress size={20}/> : 'Run My Feature'}
             </Button>
+            {featureError && <Alert severity="error">{featureError}</Alert>}
             {/* ... display assets or loading/error states ... */}
-          </div>
+          </Box>
         );
       }
       ```
 
-7.  **State Management (Zustand - Optional)**
-    - If the feature involves shared global state (e.g., filters, settings), add or update a slice in `/src/store`.
+7.  **State Management (Zustand)**
+    - The main application state (filters, sorting, selection) resides in `/src/store/filterStore.ts` (`useAppStore`).
+    - Access state and actions using the provided selector hooks (e.g., `useAssetQuery`, `useSelection`, `useAppActions`, `useYearFilter`).
+    - Use `shallow` comparison with `useStoreWithEqualityFn` for action selectors to prevent unnecessary re-renders.
+    - Add new state slices or actions to this central store as needed for global state.
 
-8.  **Update Documentation (`devguide.md`)**
-    - Add the new IPC channel to the **IPC API Reference** table.
-    - Briefly mention the new hook/feature in relevant sections.
-    - Update folder layout descriptions if component locations change (e.g., moving views from `/containers` to `/pages`).
+8.  **Update Documentation (`devguide.md`, etc.)**
+    - Add new IPC channels (like `change-view` listener), hooks, or major state changes to this guide.
+    - Update `appflow.md`, `frontend.md`, `backend.md` if the overall flow or architecture changes significantly (e.g., reflect removal of AppBar navigation).
 
 ## 6. Thumbnail Generation
 
@@ -196,8 +205,8 @@ This document outlines the setup and common tasks for developing the AdVault2 ap
 ## 7. Troubleshooting Common Issues
 
 - **Blank Screen:**
-    - Check the **Renderer Process Console** (Ctrl+Shift+I or Cmd+Opt+I) for errors. Look for uncaught exceptions.
-    - Temporarily simplify the main React component (`src/App.tsx` or the view it renders like `NewLibraryView.tsx`) to render just static text. If that works, gradually add back complexity to find the failing part.
+    - Check the **Renderer Process Console** (Ctrl+Shift+I or Cmd+Opt+I) for errors.
+    - Temporarily simplify the main React component (`src/App.tsx` or the active view like `src/pages/LibraryView.tsx`) to render just static text.
     - Ensure `src/main.tsx` correctly mounts the `App` component to the `#root` element in `index.html`.
     - Verify that the Vite dev server is running correctly and accessible.
     - Check for errors in the **Main Process Console** (the terminal where you ran `npm run dev`) related to window creation or loading.
@@ -206,6 +215,11 @@ This document outlines the setup and common tasks for developing the AdVault2 ap
     - Verify the method is correctly exposed via `contextBridge.exposeInMainWorld('api', ...)` in the preload script (e.g., `electron/preload/index.ts`).
     - Make sure the method name and payload structure match between the main process handler, preload script, `src/types/api.ts`, and the renderer hook/call.
     - Check for errors during preload script execution in the Renderer console.
+- **View Not Changing:**
+    - Verify the `change-view` IPC message is being sent correctly from the menu click handlers in `electron/main/index.ts`.
+    - Check that the `onViewChange` listener is correctly set up in `electron/preload/index.ts` and exposed via `contextBridge`.
+    - Ensure the `useEffect` hook in `src/App.tsx` is calling `window.api.onViewChange` and updating the `activeView` state correctly.
+    - Check the Renderer Process Console for errors related to the listener or state update.
 - **Infinite Loops / Repeated API Calls:**
     - Check `useEffect` dependency arrays in your components.
     - If a dependency is a function coming from a custom hook (like `useApi.ts`), ensure that function's reference is stable. Define the underlying API call function outside the hook or wrap the hook's returned function in `useCallback` *if appropriate* (often defining the base function stably is better, as shown in `useApi.ts` example).

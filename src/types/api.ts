@@ -92,6 +92,11 @@ export interface IElectronAPI {
   getVersions: (payload: GetVersionsPayload) => Promise<GetVersionsResponse>;
   addToGroup: (payload: AddToGroupPayload) => Promise<ApiResponse<null>>;
   getThumbnailUrl: (assetId: number) => string;
+  
+  // Add method for subscribing to view changes from main process menu
+  // Takes a callback and returns a cleanup function
+  onViewChange: (callback: (viewName: string) => void) => (() => void);
+  
   // Add other API methods here
 }
 

@@ -28,6 +28,21 @@ const api: Partial<IElectronAPI> = {
   // Placeholder for other APIs (e.g., custom fields)
   getVersions: (payload: GetVersionsPayload) => ipcRenderer.invoke('get-versions', payload),
   addToGroup: (payload: AddToGroupPayload) => ipcRenderer.invoke('add-to-group', payload),
+
+  // Add listener for menu-driven view changes
+  onViewChange: (callback: (viewName: string) => void) => {
+    // Define the handler function
+    const handler = (_event: Electron.IpcRendererEvent, viewName: string) => {
+      console.log('Preload: Received change-view:', viewName); // Log received view
+      callback(viewName);
+    };
+    // Add the listener
+    ipcRenderer.on('change-view', handler);
+    // Return a cleanup function
+    return () => {
+      ipcRenderer.removeListener('change-view', handler);
+    };
+  },
 }
 
 // Expose the API to the renderer process

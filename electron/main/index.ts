@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, dialog, protocol } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, dialog, protocol, Menu } from 'electron'
 import { release } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -62,6 +62,43 @@ let win: BrowserWindow | null = null
 const preload = path.join(__dirname, '../preload/index.mjs')
 const indexHtml = path.join(RENDERER_DIST, 'index.html')
 
+// Function to create the main application menu
+const createMenu = (targetWindow: BrowserWindow) => {
+  const menuTemplate: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [
+    {
+      label: 'File',
+      submenu: [
+        { role: 'quit' }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        {
+          label: 'Library',
+          click: () => {
+            targetWindow.webContents.send('change-view', 'library');
+          }
+        },
+        {
+          label: 'Settings',
+          click: () => {
+            targetWindow.webContents.send('change-view', 'settings');
+          }
+        },
+        { type: 'separator' },
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+      ]
+    },
+    // Add other menus (Edit, Window, Help) as needed
+  ];
+
+  const menu = Menu.buildFromTemplate(menuTemplate);
+  Menu.setApplicationMenu(menu);
+};
+
 async function createWindow() {
   win = new BrowserWindow({
     title: 'Main window',
@@ -77,6 +114,9 @@ async function createWindow() {
       // contextIsolation: false,
     },
   })
+
+  // Set up the menu *after* the window is created
+  createMenu(win);
 
   if (VITE_DEV_SERVER_URL) { // #298
     win.loadURL(VITE_DEV_SERVER_URL)
