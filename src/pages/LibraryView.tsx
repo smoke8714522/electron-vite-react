@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Box } from '@mui/material';
-// import FilterSidebar from '../components/organisms/FilterSidebar';
-import SidebarFilters from '../components/organisms/SidebarFilters';
+import FilterSidebar from '../components/organisms/FilterSidebar';
 import LibraryToolbar from '../components/organisms/LibraryToolbar';
 import AssetGrid from '../components/organisms/AssetGrid';
 import AssetList from '../components/organisms/AssetList';
@@ -28,8 +27,7 @@ const LibraryView: React.FC = () => {
 
   return (
     <Box sx={{ display: 'flex', flexGrow: 1 }}>
-      {/* <FilterSidebar /> */}
-      <SidebarFilters />
+      <FilterSidebar />
       <Box
         component="main"
         sx={{
