@@ -31,7 +31,6 @@ function App() {
         component="main" 
         sx={{ 
           flexGrow: 1, 
-          width: '100%', 
           display: 'flex',
           borderTop: (theme) => `1px solid ${theme.palette.divider}`,
         }}

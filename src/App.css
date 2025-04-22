@@ -2,6 +2,8 @@
   /* max-width: 1280px; */ /* Removed to allow full width */
   /* margin: 0 auto; */    /* Removed for full width */
   /* padding: 2rem; */     /* Removed default padding */
+  flex: 1 1 auto;           /* Allow root to grow */
+  width: 100%;              /* Span full width */
   text-align: center; /* Keep or remove as needed */
 }
 
