@@ -1,7 +1,8 @@
-import React, { useCallback } from 'react';
+import React, { useRef } from 'react';
 import { Card, CardContent, CardMedia, Typography, Checkbox } from '@mui/material';
 import { Asset } from '../../types/api';
-import { useAddToGroup } from '../../hooks/useApi';
+import { useDrag, useDrop } from 'react-dnd';
+import { ItemTypes, DndItem } from '../../types/dnd';
 
 // Function to get thumbnail URL (copied from AssetCard_Old.tsx logic)
 const getThumbnailUrl = (asset: Asset): string => {
@@ -28,63 +29,54 @@ interface AssetCardProps {
   asset: Asset;
   isSelected: boolean;
   onClick: (event: React.MouseEvent) => void;
+  onGroup: (sourceId: number, targetId: number) => void;
 }
 
-const AssetCard: React.FC<AssetCardProps> = ({ asset, isSelected, onClick }) => {
-  const { call: addToGroup, loading: isGrouping } = useAddToGroup();
+const AssetCard: React.FC<AssetCardProps> = ({ asset, isSelected, onClick, onGroup }) => {
+  const ref = useRef<HTMLDivElement>(null);
 
-  const handleDragStart = useCallback((event: React.DragEvent<HTMLDivElement>) => {
-    event.dataTransfer.setData('application/advault-asset-id', String(asset.id));
-    event.dataTransfer.effectAllowed = 'move';
-  }, [asset.id]);
+  const [{ isDragging }, drag] = useDrag(() => ({
+    type: ItemTypes.ASSET_CARD,
+    item: { id: asset.id, type: ItemTypes.ASSET_CARD } as DndItem,
+    collect: (monitor) => ({
+      isDragging: !!monitor.isDragging(),
+    }),
+  }), [asset.id]);
 
-  const handleDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
-  }, []);
-
-  const handleDrop = useCallback(async (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const sourceIdStr = event.dataTransfer.getData('application/advault-asset-id');
-    const targetId = asset.id;
-
-    if (sourceIdStr && targetId) {
-      const sourceId = parseInt(sourceIdStr, 10);
-      if (sourceId !== targetId && !isNaN(sourceId)) {
-        console.log(`Attempting to group asset ${sourceId} under ${targetId}`);
-        try {
-          const result = await addToGroup({ sourceId, targetId });
-          if (result.success) {
-            console.log(`Successfully grouped asset ${sourceId} under ${targetId}`);
-          } else {
-            console.error('Failed to group assets:', result.error);
-          }
-        } catch (error) {
-          console.error('Error calling addToGroup:', error);
-        }
+  const [{ isOver, canDrop }, drop] = useDrop(() => ({
+    accept: ItemTypes.ASSET_CARD,
+    drop: (item: DndItem) => {
+      if (item.id !== asset.id) {
+        console.log(`AssetCard Drop: Source ${item.id} -> Target ${asset.id}`);
+        onGroup(item.id, asset.id);
       }
-    }
-  }, [asset.id, addToGroup]);
+    },
+    collect: (monitor) => ({
+      isOver: !!monitor.isOver(),
+      canDrop: !!monitor.canDrop(),
+    }),
+  }), [asset.id, onGroup]);
 
   const thumbnailUrl = getThumbnailUrl(asset);
   const displayFilename = asset.path?.split(/[\\/]/).pop() || 'Unknown File';
 
+  drag(drop(ref));
+
   return (
-    <Card 
-      onClick={onClick} 
-      draggable={true}
-      onDragStart={handleDragStart}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-      sx={{ 
-        position: 'relative', 
+    <Card
+      ref={ref}
+      onClick={onClick}
+      sx={{
+        position: 'relative',
         border: isSelected ? '2px solid' : '2px solid transparent',
         borderColor: isSelected ? 'primary.main' : 'transparent',
         height: '100%',
-        display: 'flex', 
+        display: 'flex',
         flexDirection: 'column',
-        opacity: isGrouping ? 0.5 : 1,
+        opacity: isDragging ? 0.5 : 1,
         cursor: 'grab',
+        outline: isOver && canDrop ? `2px dashed ${'#1976d2'}` : 'none',
+        outlineOffset: '2px',
       }}
     >
       {isSelected && (
@@ -108,7 +100,6 @@ const AssetCard: React.FC<AssetCardProps> = ({ asset, isSelected, onClick }) => 
           objectPosition: 'top'
         }}
         onError={(e) => console.error(`Failed to load image: ${thumbnailUrl}`, e)}
-        onDragStart={(e) => e.preventDefault()}
       />
       <CardContent sx={{ py: 1, '&:last-child': { pb: 1 }, flexGrow: 1 }}>
         <Typography gutterBottom variant="body2" component="div" noWrap title={displayFilename}>

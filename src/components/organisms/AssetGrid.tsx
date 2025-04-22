@@ -14,6 +14,7 @@ import {
   useAppActions
 } from '../../store/filterStore';
 import type { Asset } from '../../types/api'; // Need Asset type for props
+import { useAddToGroup } from '../../hooks/useApi'; // Import the hook
 
 // Type for the itemData prop passed to FixedSizeGrid
 interface GridItemData {
@@ -34,6 +35,7 @@ const CARD_HEIGHT = 240; // Includes spacing
 const AssetGrid: React.FC<AssetGridProps> = ({ assets, loading, error }) => {
   const selectedIds = useSelection();
   const { toggleSelected, setSelected } = useAppActions();
+  const { call: addToGroup } = useAddToGroup(); // Initialize the hook
 
   const handleAssetClick = useCallback(
     (assetId: number, event: React.MouseEvent) => {
@@ -48,15 +50,34 @@ const AssetGrid: React.FC<AssetGridProps> = ({ assets, loading, error }) => {
     [toggleSelected, setSelected],
   );
 
+  // Define the grouping handler
+  const handleGroupAssets = useCallback(async (sourceId: number, targetId: number) => {
+    console.log(`AssetGrid handleGroupAssets: Source ${sourceId}, Target ${targetId}`);
+    try {
+      const result = await addToGroup({ sourceId, targetId });
+      if (result.success) {
+        console.log(`Successfully grouped asset ${sourceId} under ${targetId}`);
+        // TODO: Optionally trigger a refresh of assets here if needed
+        // refreshAssets(); // Assuming a function exists
+      } else {
+        console.error('Failed to group assets:', result.error);
+        // TODO: Show error to user (e.g., toast notification)
+      }
+    } catch (err) {
+      console.error('Error calling addToGroup:', err);
+      // TODO: Show error to user
+    }
+  }, [addToGroup]); // Add addToGroup to dependency array
+
   // --- Grid Cell Renderer ---
   const Cell = useCallback(
     ({ columnIndex, rowIndex, style, data }: {
       columnIndex: number;
       rowIndex: number;
       style: CSSProperties;
-      data: GridItemData;
+      data: GridItemData & { handleGroupAssets: typeof handleGroupAssets }; // Add handler to itemData type
     }) => {
-      const { items, columnCount } = data;
+      const { items, columnCount, handleGroupAssets: onGroupHandler } = data; // Extract handler
       const index = rowIndex * columnCount + columnIndex;
 
       if (index >= items.length) {
@@ -82,15 +103,13 @@ const AssetGrid: React.FC<AssetGridProps> = ({ assets, loading, error }) => {
             asset={asset}
             isSelected={selectedIds.has(asset.id)}
             onClick={event => handleAssetClick(asset.id, event)}
-            // --- Drag and Drop Props (Assume AssetCard handles these) ---
-            // onDropTarget={(draggedId) => handleGroupDrop(draggedId, asset.id)} // Example
-            // isDragging={/* logic */} // Example
-            // ...other drag/drop props
+            // Pass the grouping handler down
+            onGroup={onGroupHandler} 
           />
         </Box>
       );
     },
-    [selectedIds, handleAssetClick],
+    [selectedIds, handleAssetClick], // Keep existing dependencies, handleGroupAssets is passed via itemData
   );
 
   // --- Loading State ---
@@ -143,7 +162,8 @@ const AssetGrid: React.FC<AssetGridProps> = ({ assets, loading, error }) => {
               rowCount={rowCount}
               rowHeight={CARD_HEIGHT}
               width={width}
-              itemData={{ items: assets, columnCount }}
+              // Pass handleGroupAssets down via itemData
+              itemData={{ items: assets, columnCount, handleGroupAssets }}
               style={{ overflowX: 'hidden' }}
             >
               {Cell}

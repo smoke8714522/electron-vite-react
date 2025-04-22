@@ -42,28 +42,14 @@
      - Dragging one card onto another executes `add-to-group` IPC.  
 
 5. **Milestone 5: Metadata Editing & Version Panel**  
-   - **Goal**: Provide inline metadata editing and robust version management.  
-   - **Implementation Plan**:  
-     1. **Database & IPC Handlers**  
-        - **get-versions**: Query `assets` table for rows where `master_id = ?`.  
-        - **create-version**: Open file picker, insert new version record with `master_id` and `version_no`, generate thumbnail via `thumbnailService`.  
-        - **promote-version**: Swap master record with selected version in the DB, updating relevant fields and version numbers.  
-        - **remove-from-group**: Ungroup or delete version record by clearing `master_id` or removing row.  
-        - Update `src/types/api.ts` with new request/response types.  
-     2. **Preload & Hooks**  
-        - Expose `window.api.getVersions`, `.createVersion`, `.promoteVersion`, `.removeFromGroup` via preload script.  
-        - Extend `useApi` hook to wrap these IPC calls with loading and error states.  
-     3. **UI Components**  
-        - **TagEditorModal**: MUI `Dialog` displaying asset preview and editable metadata fields (tags, custom fields), with Save/Cancel actions.  
-        - **VersionPanel**: Expandable MUI `Collapse` panel under `AssetCard` showing version thumbnails, Promote/Delete buttons, and an `Add Version` action.  
-        - Add 
-     4. **State Management**  
-        - Integrate `TagEditorModal` and `VersionPanel` with the global Zustand store for metadata and version state.  
-        - Implement optimistic updates for version creation/promotion/removal.  
-     5. **Testing & Verification**  
-        - Write unit tests for IPC handlers and UI components.  
-        - Verify metadata editing and version management workflows in the UI.  
-        - Test error handling and edge cases for version creation/promotion/removal.  
+   - **Goal**: Provide inline editing and version management.  
+   - **Deliverables**:  
+     - Preview & Tag Editor modal for single asset edits.  
+     - Inline version panel that expands under each card/row.  
+     - IPC handlers for `get-versions`, `create-version`, `promote-version`, `remove-from-group`.  
+   - **Verification/Test**:  
+     - Editing a field updates the database and UI reflects changes.  
+     - Adding/removing/promoting versions updates version counts and panel.  
 
 6. **Milestone 6: Settings, Repair & Packaging**  
    - **Goal**: Finalize settings UI, DB repair flow, and build pipeline.  
