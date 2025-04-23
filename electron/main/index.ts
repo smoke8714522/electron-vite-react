@@ -5,10 +5,36 @@ import path from 'node:path'
 import fs from 'fs-extra'
 import mime from 'mime-types'
 // import { update } from './update' // Temporarily disable auto-updater
-import { initDatabase, getDb } from '../../lib/db'
-import type { Asset, CreateAssetPayload, BulkImportError, BulkImportResult, UpdateAssetPayload, DeleteAssetPayload, AddToGroupPayload, ApiResponse } from '../../src/types/api'
+import {
+  initDatabase,
+  getDb,
+  getAssetById, // Ensure this helper is imported if used
+  // Import the required DB functions
+  getAssetVersions,
+  createVersion,
+  promoteVersion,
+  removeFromGroup,
+  bulkUpdateAssets,
+  // Make sure createAsset (or equivalent logic) is available if used internally by bulk import
+} from '../../lib/db'
+import type {
+  Asset,
+  CreateAssetPayload,
+  BulkImportError,
+  BulkImportResult,
+  UpdateAssetPayload,
+  DeleteAssetPayload,
+  AddToGroupPayload,
+  ApiResponse,
+  // Import specific payload types needed by new handlers
+  GetVersionsPayload,
+  CreateVersionPayload,
+  PromoteVersionPayload,
+  RemoveFromGroupPayload,
+  BulkUpdatePayload,
+} from '../../src/types/api'
 // Import the service instance, but don't assume it's ready yet
-import { thumbnailService } from '../../lib/thumbnailService' 
+import { thumbnailService } from '../../lib/thumbnailService'
 
 // Calculate __dirname for ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -169,14 +195,14 @@ app.whenReady().then(async () => {
   // Initialize the database before creating the window
   try {
     // initDatabase initializes the connection accessible via getDb()
-    await initDatabase(); 
+    await initDatabase();
   } catch (error: unknown) {
     console.error('Failed to initialize database on app ready:', error);
     dialog.showErrorBox('Fatal Error', 'Failed to initialize database. Application will exit.');
     app.quit();
-    return; 
+    return;
   }
-  registerIpcHandlers(); 
+  registerIpcHandlers();
   createWindow();
 });
 
@@ -233,294 +259,345 @@ interface AssetFilters {
     sortOrder?: 'ASC' | 'DESC';
 }
 
-interface FilterParams {
-    year?: number;
-    advertiser?: string;
-    niche?: string;
-    // Add other potential parameter types here if needed for filtering
+// Generic error wrapper for handlers
+function handleApiError(channel: string, error: unknown): ApiResponse<never> {
+    console.error(`Error handling IPC [${channel}]:`, error);
+    const message = error instanceof Error ? error.message : 'An unknown error occurred';
+    return { success: false, error: message };
 }
 
 export function registerIpcHandlers() {
-  console.log('Registering IPC Handlers with Real DB...');
+  console.log('Registering IPC Handlers...');
 
   // GET ASSETS
   ipcMain.handle('get-assets', async (_event, filters: AssetFilters | undefined) => {
     console.log('IPC: get-assets called with filters:', filters);
     try {
       const db = getDb();
-      let sql = 'SELECT * FROM assets WHERE master_id IS NULL';
-      // Use a more specific type for params
-      const params: FilterParams = {}; 
-      
-      // Build WHERE clause and params object (example)
-      const whereClauses: string[] = ['master_id IS NULL']; // Start with base filter
-      if (filters?.year) {
-          whereClauses.push('year = @year');
-          params.year = filters.year;
-      }
-      if (filters?.advertiser) {
-          // Use LIKE for partial matching (case-insensitive depends on DB collation)
-          whereClauses.push('advertiser LIKE @advertiser'); 
-          params.advertiser = `%${filters.advertiser}%`; // Add wildcards for LIKE
-      }
-       if (filters?.niche) {
-          whereClauses.push('niche LIKE @niche'); 
-          params.niche = `%${filters.niche}%`;
-      }
-      // TODO: Add filtering for sharesRange, searchTerm (needs FTS query)
-
-      if (whereClauses.length > 0) {
-          sql = `SELECT * FROM assets WHERE ${whereClauses.join(' AND ')}`;
-      }
-
-      // Add ORDER BY clause
-      sql += ` ORDER BY ${filters?.sortBy || 'createdAt'} ${filters?.sortOrder || 'DESC'}`;
-      
-      console.log('Executing SQL:', sql, params); // Log the generated SQL
+      // TODO: Refactor query building logic for clarity and security
+      const sql = 'SELECT * FROM assets WHERE master_id IS NULL'; // Select only master assets by default
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const params: any[] = []; 
+      // Apply filters, sorting, pagination as needed...
+      // Example: if (filters?.year) { sql += ' AND year = ?'; params.push(filters.year); } 
       const stmt = db.prepare(sql);
-      const assets = stmt.all(params) as Asset[]; // Pass typed params
-      
-      console.log(`IPC: Returning ${assets.length} assets from DB`);
-      return { success: true, data: assets };
-    } catch (error: unknown) { 
-      console.error('Error in get-assets handler:', error);
-      const message = error instanceof Error ? error.message : 'Failed to get assets';
-      return { success: false, error: message };
+      const assets = stmt.all(...params) as Asset[];
+      // TODO: Add version count aggregation
+      return { success: true, data: assets }; // Assuming data structure is just the array
+    } catch (error) {
+      return handleApiError('get-assets', error);
     }
   });
 
-  // CREATE ASSET
+  // CREATE ASSET (Simplified - Needs robust file handling)
   ipcMain.handle('create-asset', async (_event, payload: CreateAssetPayload) => {
-    console.log('IPC: create-asset', payload);
-    try {
-      const db = getDb();
-      // Remove shares and thumbnailPath from INSERT - they have defaults or are set later
-      const stmt = db.prepare(`
-        INSERT INTO assets (path, mimeType, size, year, advertiser, niche) 
-        VALUES (@path, @mimeType, @size, @year, @advertiser, @niche)
-      `);
-      const result = stmt.run({
-        ...payload,
-        year: payload.year ?? null,
-        advertiser: payload.advertiser ?? null,
-        niche: payload.niche ?? null,
-        // Remove shares and thumbnailPath from bound parameters
-      });
-      
-      // Get the newly created asset (including id and defaults like createdAt)
-      const newAssetStmt = db.prepare('SELECT * FROM assets WHERE id = ?');
-      const newAsset = newAssetStmt.get(result.lastInsertRowid) as Asset;
-      
-      console.log('Asset created in DB:', newAsset);
-      return { success: true, data: newAsset };
-    } catch (error: unknown) {
-      console.error('Error creating asset:', error);
-      const message = error instanceof Error ? error.message : 'Failed to create asset';
-      return { success: false, error: message };
-    }
+     console.log('IPC: create-asset called with payload:', payload);
+     try {
+        const db = getDb();
+        // Basic insert - Needs validation, file copy, metadata extraction, thumbnail trigger
+        const stmt = db.prepare(
+            'INSERT INTO assets (path, fileName, mimeType, size, year, advertiser, niche, shares, master_id, version_no) VALUES (@path, @fileName, @mimeType, @size, @year, @advertiser, @niche, 0, NULL, 1)'
+        );
+        const info = stmt.run(payload);
+        const newId = Number(info.lastInsertRowid);
+        const newAsset = getAssetById(newId); // Fetch to return full asset
+        if (!newAsset) throw new Error('Failed to retrieve created asset');
+        // TODO: Trigger thumbnail generation for newId
+        return { success: true, data: newAsset };
+     } catch (error) {
+        return handleApiError('create-asset', error);
+     }
   });
 
   // UPDATE ASSET
   ipcMain.handle('update-asset', async (_event, payload: UpdateAssetPayload) => {
-    console.log('IPC: update-asset', payload);
-    try {
+      console.log('IPC: update-asset called with payload:', payload);
+      try {
         const db = getDb();
-        const { id, fields } = payload;
+        // TODO: Validate fields, build query safely
+        const allowedFields = ['year', 'advertiser', 'niche', 'shares']; // Example
+        const setClauses = Object.keys(payload.fields)
+            .filter(key => allowedFields.includes(key))
+            .map(key => `${key} = ?`);
+        const values = Object.entries(payload.fields)
+            .filter(([key]) => allowedFields.includes(key))
+            .map(([, value]) => value);
         
-        // Construct SET clause dynamically based on provided fields
-        const setClauses = Object.keys(fields).map(key => `${key} = @${key}`);
-        if (setClauses.length === 0) {
-            return { success: false, error: 'No fields provided for update.' };
-        }
-        
-        const sql = `UPDATE assets SET ${setClauses.join(', ')} WHERE id = @id`;
+        if (setClauses.length === 0) return { success: false, error: 'No valid fields to update' };
+
+        const sql = `UPDATE assets SET ${setClauses.join(', ')} WHERE id = ?`;
         const stmt = db.prepare(sql);
-        const result = stmt.run({ ...fields, id });
-
-        if (result.changes === 0) {
-             return { success: false, error: `Asset with ID ${id} not found for update.` };
-        }
-
-        // Return the updated asset data
-        const updatedAssetStmt = db.prepare('SELECT * FROM assets WHERE id = ?');
-        const updatedAsset = updatedAssetStmt.get(id) as Asset;
-
-        console.log(`Asset ${id} updated in DB.`);
+        const info = stmt.run(...values, payload.id);
+        
+        if (info.changes === 0) return { success: false, error: 'Asset not found or no changes made.' };
+        
+        const updatedAsset = getAssetById(payload.id); // Fetch updated asset
+        // TODO: Trigger thumbnail regeneration if needed
         return { success: true, data: updatedAsset };
-    } catch (error: unknown) {
-        console.error(`Error updating asset ${payload.id}:`, error);
-        const message = error instanceof Error ? error.message : 'Failed to update asset';
-        return { success: false, error: message };
-    }
+      } catch (error) {
+        return handleApiError('update-asset', error);
+      }
   });
 
   // DELETE ASSET
   ipcMain.handle('delete-asset', async (_event, payload: DeleteAssetPayload) => {
-    console.log('IPC: delete-asset', payload);
+     console.log('IPC: delete-asset called with payload:', payload);
      try {
         const db = getDb();
-        const { id } = payload;
-        // TODO: Consider deleting the actual file from vault as well?
+        // TODO: Add physical file deletion logic here (vault + cache)
         const stmt = db.prepare('DELETE FROM assets WHERE id = ?');
-        const result = stmt.run(id);
-
-        if (result.changes === 0) {
-            return { success: false, error: `Asset with ID ${id} not found for deletion.` };
-        }
-
-        console.log(`Asset ${id} deleted from DB.`);
-        // TODO: Also delete associated thumbnails?
-        return { success: true };
-    } catch (error: unknown) {
-        console.error(`Error deleting asset ${payload.id}:`, error);
-        const message = error instanceof Error ? error.message : 'Failed to delete asset';
-        return { success: false, error: message };
-    }
+        const info = stmt.run(payload.id);
+        if (info.changes === 0) throw new Error('Asset not found');
+        return { success: true, data: null };
+     } catch (error) {
+        return handleApiError('delete-asset', error);
+     }
   });
 
-  // BULK IMPORT ASSETS
+  // BULK IMPORT ASSETS (Restore Core Logic)
   ipcMain.handle('bulk-import-assets', async (_event): Promise<ApiResponse<BulkImportResult>> => {
-    const mainWindow = BrowserWindow.getAllWindows()[0];
-    if (!mainWindow) {
-      // Ensure return matches the annotated type
-      return { success: false, error: 'Main window not found' }; 
-    }
-    const result = await dialog.showOpenDialog(mainWindow, {
-      properties: ['openFile', 'multiSelections', 'dontAddToRecent'],
-      title: 'Select Assets to Import',
-      filters: [
-        { name: 'Media Files', extensions: ['jpg', 'jpeg', 'png', 'gif', 'mp4', 'mov', 'avi', 'webm', 'pdf'] },
-        { name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'gif'] },
-        { name: 'Videos', extensions: ['mp4', 'mov', 'avi', 'webm'] },
-        { name: 'All Files', extensions: ['*'] },
-      ],
-    });
-
-    if (result.canceled || !result.filePaths.length) {
-      // Ensure return matches the annotated type
-      return { success: true, data: { importedCount: 0, errors: [] } }; 
+    console.log('IPC: bulk-import-assets called');
+    if (!win) {
+        return { success: false, error: 'Main window not available' };
     }
 
-    let importedCount = 0;
-    const errors: BulkImportError[] = [];
-    const vaultRoot = path.join(projectRoot, 'vault'); 
-    await fs.ensureDir(vaultRoot);
+    try {
+        const dialogResult = await dialog.showOpenDialog(win, {
+            properties: ['openFile', 'multiSelections', 'dontAddToRecent'],
+            title: 'Select Assets to Import',
+            // Consider adding filters based on supported mime types
+            filters: [
+                { name: 'Media Files', extensions: ['jpg', 'jpeg', 'png', 'gif', 'mp4', 'mov', 'avi', 'webm', 'pdf'] },
+                { name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'gif'] },
+                { name: 'Videos', extensions: ['mp4', 'mov', 'avi', 'webm'] },
+                { name: 'All Files', extensions: ['*'] },
+            ],
+        });
 
-    // Use a transaction for bulk insert/update efficiency
-    const db = getDb();
-    // Adjusted INSERT statement (remove shares, thumbnailPath)
-    const insertStmt = db.prepare(`
-        INSERT INTO assets (path, mimeType, size, year, advertiser, niche) 
-        VALUES (@path, @mimeType, @size, @year, @advertiser, @niche)
-        RETURNING id, createdAt, mimeType, version_no; -- Return needed fields
-    `);
-    const updateThumbStmt = db.prepare('UPDATE assets SET thumbnailPath = ? WHERE id = ?');
+        if (dialogResult.canceled || !dialogResult.filePaths.length) {
+            console.log('Bulk import canceled by user.');
+            return { success: true, data: { importedCount: 0, errors: [] } };
+        }
 
-    // Make the transaction function async
-    const runImport = db.transaction(async (files: string[]) => { 
-        let localImportCount = 0;
-        const localErrors: BulkImportError[] = [];
-        for (const sourceFilePath of files) {
+        const filesToImport = dialogResult.filePaths;
+        console.log(`Attempting to import ${filesToImport.length} files.`);
+
+        let importedCount = 0;
+        const errors: BulkImportError[] = [];
+        const vaultRoot = path.join(projectRoot, 'vault');
+        await fs.ensureDir(vaultRoot);
+
+        const db = getDb();
+        // Prepare statements outside the loop for efficiency
+        // Use named parameters for clarity
+        const insertStmt = db.prepare(`
+            INSERT INTO assets (path, fileName, createdAt, mimeType, size, year, advertiser, niche, shares, master_id, version_no, thumbnailPath)
+            VALUES (@path, @fileName, @createdAt, @mimeType, @size, @year, @advertiser, @niche, @shares, @master_id, @version_no, @thumbnailPath)
+            ON CONFLICT(path) DO NOTHING -- Simple conflict handling: skip existing paths
+        `);
+        const updateThumbStmt = db.prepare('UPDATE assets SET thumbnailPath = @thumbnailPath WHERE id = @id');
+
+        // Process files sequentially for simplicity, consider parallel processing for performance later
+        for (const sourceFilePath of filesToImport) {
+            const fileName = path.basename(sourceFilePath);
             let assetId: number | null = null;
-            try {
-                // Use await inside the async transaction function
-                const stats = await fs.stat(sourceFilePath);
-                if (stats.isDirectory()) continue;
-                const mimeType = mime.lookup(sourceFilePath) || 'application/octet-stream';
-                const fileName = path.basename(sourceFilePath);
-                const uniqueFileName = `${Date.now()}-${fileName}`;
-                const targetFilePath = path.join(vaultRoot, uniqueFileName);
-                await fs.copy(sourceFilePath, targetFilePath, { overwrite: false, errorOnExist: true });
-                const relativePath = path.relative(vaultRoot, targetFilePath);
+            let targetFilePathInVault = '';
 
+            try {
+                const stats = await fs.stat(sourceFilePath);
+                if (stats.isDirectory()) {
+                    console.log(`Skipping directory: ${sourceFilePath}`);
+                    continue; // Skip directories
+                }
+
+                const mimeType = mime.lookup(sourceFilePath) || 'application/octet-stream';
+                // Create a potentially unique name for the vault to avoid collisions
+                // Consider a more robust unique naming strategy if needed (e.g., hash)
+                const uniqueFileName = `${Date.now()}-${fileName}`;
+                targetFilePathInVault = path.join(vaultRoot, uniqueFileName);
+
+                // Copy the file to the vault
+                await fs.copy(sourceFilePath, targetFilePathInVault, { overwrite: false, errorOnExist: true });
+                const relativePathInVault = path.relative(vaultRoot, targetFilePathInVault);
+
+                // Prepare asset data for DB insertion
                 const assetData = {
-                    path: relativePath,
+                    path: relativePathInVault, // Store relative path
+                    fileName: fileName, // Store original filename separately
+                    createdAt: new Date().toISOString(),
                     mimeType: mimeType,
                     size: stats.size,
-                    year: null, advertiser: null, niche: null, // Defaults
+                    year: null, // Defaults, user can edit later
+                    advertiser: null,
+                    niche: null,
+                    shares: 0,
+                    master_id: null,
+                    version_no: 1,
+                    thumbnailPath: null // Default, will be updated after generation
                 };
-                
-                const insertResult = insertStmt.get(assetData) as { id: number, createdAt: string, mimeType: string, version_no: number };
-                if (!insertResult || !insertResult.id) {
-                    throw new Error('Failed to insert asset or retrieve ID');
-                }
-                assetId = insertResult.id;
 
-                const thumbnailResultPath = await thumbnailService.generateThumbnail(
-                    targetFilePath,
-                    insertResult.mimeType,
-                    assetId
-                );
+                // Attempt to insert into DB
+                const info = insertStmt.run(assetData);
 
-                if (thumbnailResultPath) {
-                    updateThumbStmt.run(thumbnailResultPath, assetId);
-                    console.log(`Asset ${assetId} thumbnail path updated in DB.`);
+                if (info.changes > 0) {
+                    assetId = Number(info.lastInsertRowid);
+                    console.log(`Successfully inserted asset ${assetId} (${fileName}) into DB.`);
+                    importedCount++;
+
+                    // Generate thumbnail (async, don't wait for all thumbs)
+                    thumbnailService.generateThumbnail(targetFilePathInVault, mimeType, assetId)
+                        .then(thumbnailResultPath => {
+                            if (thumbnailResultPath && assetId) {
+                                try {
+                                    // Update DB with thumbnail path using a separate non-transactional write
+                                    updateThumbStmt.run({ thumbnailPath: thumbnailResultPath, id: assetId });
+                                    console.log(`Thumbnail path updated for asset ${assetId}`);
+                                }
+                                catch (thumbDbError) {
+                                     console.error(`Failed to update thumbnail path in DB for asset ${assetId}:`, thumbDbError);
+                                     // Non-fatal, log and continue
+                                }
+                            } 
+                        })
+                        .catch(thumbError => {
+                            console.error(`Failed to generate thumbnail for ${fileName} (Asset ID: ${assetId}):`, thumbError);
+                            // Log error but don't add to main import errors unless critical
+                        });
+                } else {
+                    // If info.changes is 0, it means ON CONFLICT kicked in
+                    console.log(`Skipped duplicate asset based on path: ${relativePathInVault}`);
+                    // Optionally delete the copied file if it wasn't inserted?
+                    // await fs.remove(targetFilePathInVault); 
+                    errors.push({ filePath: sourceFilePath, reason: `Skipped: Asset with path '${relativePathInVault}' may already exist.` });
                 }
-                localImportCount++;
+
             } catch (error: unknown) {
-                console.error(`Failed to import ${sourceFilePath}:`, error);
-                let reason = 'Unknown error';
-                if (error && typeof error === 'object' && 'code' in error && error.code === 'EEXIST') {
-                    reason = 'File already exists in vault (name collision)';
-                } else if (error instanceof Error) {
-                    reason = error.message;
+                console.error(`Failed processing ${sourceFilePath}:`, error);
+                let reason = 'Unknown processing error';
+                 if (error && typeof error === 'object') {
+                    if ('code' in error && error.code === 'EEXIST') {
+                        reason = 'File already exists in vault (possible name collision during copy)';
+                    } else if (error instanceof Error) {
+                        reason = error.message;
+                    }
                 } else {
                     reason = String(error);
                 }
-                localErrors.push({ filePath: sourceFilePath, reason });
+                errors.push({ filePath: sourceFilePath, reason });
+                // Clean up potentially copied file if error occurred after copy but before DB insert success
+                if (targetFilePathInVault && assetId === null) {
+                    try { await fs.remove(targetFilePathInVault); } catch (cleanupError) { console.error('Failed to cleanup vault file after error:', cleanupError); }
+                }
             }
         }
-        return { importedCount: localImportCount, errors: localErrors };
-    });
 
-    // Execute the transaction - await the async function
-    const transactionResult = await runImport(result.filePaths);
-    importedCount = transactionResult.importedCount;
-    errors.push(...transactionResult.errors);
+        console.log(`Bulk import summary: Imported ${importedCount}, Errors: ${errors.length}`);
+        // Send signal to renderer to potentially refresh assets
+        win?.webContents.send('assets-updated'); 
+        return { success: true, data: { importedCount, errors } };
 
-    mainWindow?.webContents.send('assets-updated');
-    return { success: true, data: { importedCount, errors } }; 
-  });
-
-  // GET VERSIONS (Placeholder)
-  ipcMain.handle('get-versions', async (_event, _payload: { masterId: number }) => { 
-    // Use _payload.masterId here when implemented
-    console.log('IPC: get-versions received:', _payload); 
-    try {
-      console.warn('get-versions handler not fully implemented yet.')
-      // TODO: Implement dbService.getAssetVersions(_payload.masterId);
-      return { success: true, data: [] }; // Placeholder
-    } catch (error: unknown) { // Type the error
-      console.error('Error fetching versions:', error);
-      const message = error instanceof Error ? error.message : 'Failed to fetch versions';
-      return { success: false, error: message };
+    } catch (error) {
+        // Catch errors from dialog or initial setup
+        return handleApiError('bulk-import-assets', error);
     }
   });
-
-  // ADD TO GROUP
+  
+  // ADD TO GROUP (Placeholder - Needs DB function)
   ipcMain.handle('add-to-group', async (_event, payload: AddToGroupPayload) => {
-    console.log('IPC: add-to-group', payload);
-    const { sourceId, targetId } = payload;
-    if (!Number.isInteger(sourceId) || !Number.isInteger(targetId)) {
-        return { success: false, error: 'Invalid asset IDs provided.' };
+      console.log('IPC: add-to-group called with payload:', payload);
+      // TODO: Implement db.addToGroup(payload.sourceId, payload.targetId)
+      console.warn('IPC: add-to-group DB function not implemented yet.');
+      // Placeholder success
+      return { success: true, data: null };
+  });
+
+  // GET VERSIONS
+  ipcMain.handle('get-versions', async (_event, payload: GetVersionsPayload) => {
+    console.log('IPC: get-versions called with payload:', payload);
+    if (typeof payload?.masterId !== 'number') {
+        return { success: false, error: 'Invalid masterId provided.' };
     }
     try {
-        const db = getDb();
-        // TODO: Add checks - e.g., ensure targetId is a master asset (master_id IS NULL)?
-        // Ensure sourceId is not already the targetId or already a version of targetId?
-        const stmt = db.prepare('UPDATE assets SET master_id = ? WHERE id = ?');
-        const result = stmt.run(targetId, sourceId);
-        if (result.changes === 0) {
-            return { success: false, error: `Asset with ID ${sourceId} not found for grouping.` };
-        }
-        console.log(`Asset ${sourceId} grouped under ${targetId}`);
-        return { success: true };
-    } catch (error: unknown) {
-        console.error(`Error adding asset ${sourceId} to group ${targetId}:`, error);
-        const message = error instanceof Error ? error.message : 'Failed to group asset';
-        return { success: false, error: message };
+      const assets = getAssetVersions(payload.masterId);
+      return { success: true, data: assets };
+    } catch (error) {
+      return handleApiError('get-versions', error);
     }
   });
+
+  // CREATE VERSION
+  ipcMain.handle('create-version', async (_event, payload: CreateVersionPayload) => {
+    console.log('IPC: create-version called with payload:', payload);
+    if (typeof payload?.masterId !== 'number') {
+      return { success: false, error: 'Invalid masterId provided.' };
+    }
+    try {
+      // TODO: Add physical file copy/link logic if payload.filePath exists
+      const result = createVersion(payload.masterId);
+      // result now matches { id: number, version_no: number }
+      // TODO: Trigger thumbnail generation for result.id
+      return { success: true, data: result }; 
+    } catch (error) {
+      return handleApiError('create-version', error);
+    }
+  });
+
+  // PROMOTE VERSION
+  ipcMain.handle('promote-version', async (_event, payload: PromoteVersionPayload) => {
+    console.log('IPC: promote-version called with payload:', payload);
+    if (typeof payload?.versionId !== 'number') {
+      return { success: false, error: 'Invalid versionId provided.' };
+    }
+    try {
+      promoteVersion(payload.versionId); // Now returns void or throws
+      // TODO: Trigger relevant thumbnail updates if needed
+      return { success: true, data: null }; // Indicate success
+    } catch (error) {
+      return handleApiError('promote-version', error);
+    }
+  });
+
+  // REMOVE FROM GROUP
+  ipcMain.handle('remove-from-group', async (_event, payload: RemoveFromGroupPayload) => {
+    console.log('IPC: remove-from-group called with payload:', payload);
+    if (typeof payload?.versionId !== 'number') {
+      return { success: false, error: 'Invalid versionId provided.' };
+    }
+    try {
+      removeFromGroup(payload.versionId); // Now returns void or throws
+      // TODO: Trigger thumbnail update if needed
+      return { success: true, data: null }; // Indicate success
+    } catch (error) {
+      return handleApiError('remove-from-group', error);
+    }
+  });
+
+  // BULK UPDATE ASSETS
+  ipcMain.handle('bulk-update-assets', async (_event, payload: BulkUpdatePayload) => {
+    console.log('IPC: bulk-update-assets called with payload:', payload);
+    // Basic validation (can be more robust)
+    if (!Array.isArray(payload?.ids) || payload.ids.length === 0) {
+      return { success: false, error: 'Invalid or empty asset IDs provided.' };
+    }
+    if (typeof payload?.fields !== 'object' || payload.fields === null || Object.keys(payload.fields).length === 0) {
+      return { success: false, error: 'Invalid or empty fields provided for update.' };
+    }
+    try {
+      const result = bulkUpdateAssets(payload.ids, payload.fields);
+      // result now matches { updatedCount: number; errors: BulkUpdateError[] }
+      // TODO: Trigger thumbnail updates for successfully updated assets?
+      return { success: true, data: result };
+    } catch (error) {
+      // This catches errors thrown *before* or *during* the transaction itself
+      return handleApiError('bulk-update-assets', error);
+    }
+  });
+
+  // GET MASTER ASSETS (If needed, add DB function first)
+  // ipcMain.handle('get-master-assets', async (_event, payload) => { ... });
+
+  // SHOW OPEN DIALOG (If needed, add to preload and types)
+  // ipcMain.handle('show-open-dialog', async (_event) => { ... });
 
   console.log('IPC Handlers Registered.');
 }

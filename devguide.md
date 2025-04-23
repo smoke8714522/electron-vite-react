@@ -58,6 +58,13 @@ Follow these steps for features needing backend interaction:
 6.  **UI (`/src/pages`, `/src/components`):** Call the new hook from your React component. Use the hook's state (`loading`, `error`, `data`) and `call` function.
 7.  **State/Refresh:** If the action affects shared state or requires a data refresh in other components, use callbacks (e.g., `onDataChange`) passed down from parent views (like `LibraryView`) to trigger state updates or refetches (e.g., re-calling `fetchAssets` from `useGetAssets`).
 
+**New Versioning & Bulk-Edit Workflow:**  
+- **DB (`lib/db.ts`):** Exported functions `getAssetVersions(masterId)`, `createVersion(masterId)`, `promoteVersion(versionId)`, `removeFromGroup(versionId)`, `bulkUpdateAssets(ids, fields)` with proper transactions and error handling.  
+- **IPC Channels (`electron/main/index.ts`):** Registered handlers for `'get-versions'`, `'create-version'`, `'promote-version'`, `'remove-from-group'`, `'bulk-update-assets'`, returning `ApiResponse<T>`.  
+- **Preload (`electron/preload/index.ts`):** Exposed `window.api.createVersion`, `.promoteVersion`, `.removeFromGroup`, `.bulkUpdateAssets` invoking the corresponding IPC methods.  
+- **Types (`src/types/api.ts`):** Defined `CreateVersionPayload/Response`, `PromoteVersionPayload/Response`, `RemoveFromGroupPayload/Response`, `BulkUpdatePayload/Response` and updated `IElectronAPI`.  
+- **Hooks (`src/hooks/useApi.ts`):** Added `useGetVersions`, `useCreateVersion`, `usePromoteVersion`, `useRemoveFromGroup`, `useBulkUpdateAssets` using `safeApiCall` and `useAsyncCall` pattern.
+
 ## 4. Key Libraries & Patterns
 
 *   **UI Framework:** React 18+ / TypeScript.
@@ -129,4 +136,3 @@ The versioning and bulk edit features follow the core workflow described above. 
 *   **UI Integration:**
     *   `VersionPanel.tsx`: Uses `useGetVersions` to load data and `usePromoteVersion`, `useRemoveFromGroup`, `useCreateVersion` to trigger actions. Calls `onVersionsChange` callback on success.
     *   `BulkEditModal.tsx`: Uses `useBulkUpdateAssets` in its save handler. Calls `onSaveSuccess` callback on success.
-

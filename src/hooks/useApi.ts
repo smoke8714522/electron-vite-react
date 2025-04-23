@@ -9,6 +9,8 @@ import type {
   DeleteAssetPayload,
   DeleteAssetResponse,
   BulkImportAssetsResponse,
+  BulkUpdatePayload,
+  BulkUpdateResponse,
   GetVersionsPayload,
   GetVersionsResponse,
   AddToGroupPayload,
@@ -57,6 +59,7 @@ const addToGroupApi = safeApiCall<AddToGroupPayload, AddToGroupResponse['data']>
 const createVersionApi = safeApiCall<CreateVersionPayload, CreateVersionResponse['data']>(window.api.createVersion);
 const promoteVersionApi = safeApiCall<PromoteVersionPayload, PromoteVersionResponse['data']>(window.api.promoteVersion);
 const removeFromGroupApi = safeApiCall<RemoveFromGroupPayload, RemoveFromGroupResponse['data']>(window.api.removeFromGroup);
+const bulkUpdateAssetsApi = safeApiCall<BulkUpdatePayload, BulkUpdateResponse['data']>(window.api.bulkUpdateAssets);
 
 // --- Hook Implementation --- //
 
@@ -138,6 +141,10 @@ export function usePromoteVersion() {
 
 export function useRemoveFromGroup() {
   return useAsyncCall<RemoveFromGroupResponse['data'], RemoveFromGroupPayload>(removeFromGroupApi);
+}
+
+export function useBulkUpdateAssets() {
+  return useAsyncCall<BulkUpdateResponse['data'], BulkUpdatePayload>(bulkUpdateAssetsApi);
 }
 
 // Example of a combined hook (alternative approach)

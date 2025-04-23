@@ -3,6 +3,12 @@ import fs from 'fs-extra';
 import Database from 'better-sqlite3';
 import type { Asset } from '../src/types/api'; // Import Asset type
 
+// Define BulkUpdateError type locally if not defined globally
+interface BulkUpdateError {
+  id: number;
+  error: string;
+}
+
 let db: Database.Database | null = null;
 
 // Bring back the createTables function definition
@@ -140,23 +146,21 @@ export function getAssetVersions(masterId: number): Asset[] {
   const stmt = db.prepare(
     'SELECT * FROM assets WHERE master_id = ? OR id = ? ORDER BY version_no DESC'
   );
-  return stmt.all(masterId, masterId) as Asset[]; // Type assertion
+  // Ensure the return type matches exactly Asset[]
+  const results = stmt.all(masterId, masterId);
+  return results as Asset[];
 }
 
 // Create a new version for an asset
 // TODO: Implement actual file copying/linking if needed
-export function createVersion(masterId: number): { success: boolean; newId?: number; asset?: Asset; error?: string } {
+export function createVersion(masterId: number): { id: number; version_no: number } {
   const db = getDb();
   const masterAsset = getAssetById(masterId);
   if (!masterAsset) {
-    return { success: false, error: 'Master asset not found' };
+    throw new Error('Master asset not found');
   }
 
-  // Determine the master ID (it could be the asset itself if it's not a version yet)
   const actualMasterId = masterAsset.master_id || masterAsset.id;
-  let newAsset: Asset | undefined; // Variable to hold the new asset data
-
-  // Declare newPath here to make it accessible in the catch block
   let newPath: string = '';
 
   const transaction = db.transaction(() => {
@@ -198,47 +202,48 @@ export function createVersion(masterId: number): { success: boolean; newId?: num
     const info = insertStmt.run(newAssetData);
     const newId = Number(info.lastInsertRowid);
 
-    // Fetch the newly created asset to return it
-    newAsset = getAssetById(newId);
-    if (!newAsset) {
-        throw new Error("Failed to retrieve newly created version asset.");
+    if (!newId) { // Check if insert succeeded
+        throw new Error("Failed to insert new version record into database.");
     }
 
-    return { success: true, newId, asset: newAsset };
+    // Return only id and version_no as requested
+    return { id: newId, version_no: nextVersionNo };
   });
 
   try {
+    // Execute transaction and return result
     return transaction();
   } catch (error) {
     console.error('Error creating version:', error);
     const message = error instanceof Error ? error.message : String(error);
     // Check for UNIQUE constraint error specifically, using newPath
      if (message.includes('UNIQUE constraint failed: assets.path') && newPath) {
-        return { success: false, error: `Failed to create version: Path '${newPath}' might already exist.` };
+        // Re-throw specific error
+        throw new Error(`Failed to create version: Path '${newPath}' might already exist.`);
      }
-    return { success: false, error: message };
+    // Re-throw general error
+    throw error;
   }
 }
 
 // Promote a specific version to be the new master
-export function promoteVersion(versionId: number): { success: boolean; error?: string } {
+export function promoteVersion(versionId: number): void {
   const db = getDb();
   const versionAsset = getAssetById(versionId);
 
   if (!versionAsset) {
-    return { success: false, error: 'Version asset not found' };
+    throw new Error('Version asset not found');
   }
 
   const currentMasterId = versionAsset.master_id;
   if (!currentMasterId) {
     // Check if it's already a master (master_id is NULL and version_no is 1)
     if (versionAsset.master_id === null && versionAsset.version_no === 1) {
-       return { success: false, error: 'Asset is already the master.' };
+       throw new Error('Asset is already the master.');
     }
     // Otherwise, it's an unlinked asset, cannot promote.
-    return { success: false, error: 'Asset is not part of a version group.' };
+    throw new Error('Asset is not part of a version group.');
   }
-
 
   const transaction = db.transaction(() => {
     // 1. Get the current master asset
@@ -262,7 +267,6 @@ export function promoteVersion(versionId: number): { success: boolean; error?: s
     // Make the old master a version of the *new* master (versionId)
     updateOldMasterStmt.run(versionId, oldMasterNewVersionNo, currentMasterId);
 
-
     // 3. Update the promoted version: set master_id to NULL, set version_no to 1
     const updatePromotedStmt = db.prepare(
       'UPDATE assets SET master_id = NULL, version_no = 1 WHERE id = ?'
@@ -275,31 +279,29 @@ export function promoteVersion(versionId: number): { success: boolean; error?: s
       'UPDATE assets SET master_id = ? WHERE master_id = ? AND id != ?'
     );
     updateSiblingsStmt.run(versionId, currentMasterId, currentMasterId); // Point siblings to new master (versionId)
-
-
-    return { success: true };
   });
 
   try {
-    return transaction();
+    transaction(); // Execute transaction
+    // No return value for void function
   } catch (error) {
     console.error('Error promoting version:', error);
-    const message = error instanceof Error ? error.message : String(error);
-    return { success: false, error: message };
+    // Re-throw error to be caught by IPC handler
+    throw error;
   }
 }
 
 // Remove an asset from its group (make it a master)
-export function removeFromGroup(versionId: number): { success: boolean; error?: string } {
+export function removeFromGroup(versionId: number): void {
   const db = getDb();
   const versionAsset = getAssetById(versionId);
 
   if (!versionAsset) {
-    return { success: false, error: 'Asset not found' };
+    throw new Error('Asset not found');
   }
 
   if (versionAsset.master_id === null) {
-    return { success: false, error: 'Asset is not part of a group' };
+    throw new Error('Asset is not part of a group');
   }
 
   // Reset master_id to NULL and version_no to 1
@@ -309,35 +311,42 @@ export function removeFromGroup(versionId: number): { success: boolean; error?: 
 
   try {
     const info = stmt.run(versionId);
-    return { success: info.changes > 0 };
+    if (info.changes === 0) {
+        // This could happen if the ID doesn't exist, though getAssetById checks first
+        throw new Error('Failed to update asset record, asset might not exist or already removed.');
+    }
+    // No return value for void function
   } catch (error) {
     console.error('Error removing from group:', error);
-    const message = error instanceof Error ? error.message : String(error);
-    return { success: false, error: message };
+    // Re-throw error
+    throw error;
   }
 }
 
-
 // Bulk update metadata for multiple assets
 // Use Partial<Asset> for fields, but ensure they are valid updateable fields
-export function bulkUpdateAssets(ids: number[], fields: Partial<Pick<Asset, 'year' | 'advertiser' | 'niche' | 'shares'>>): { success: boolean; updatedCount: number; error?: string } {
+export function bulkUpdateAssets(
+    ids: number[],
+    fields: Partial<Pick<Asset, 'year' | 'advertiser' | 'niche' | 'shares'>>
+): { updatedCount: number; errors: BulkUpdateError[] } {
     const db = getDb();
+    const errors: BulkUpdateError[] = [];
+    let updatedCount = 0;
+
     if (!ids || ids.length === 0) {
-        return { success: false, updatedCount: 0, error: 'No asset IDs provided' };
+        throw new Error('No asset IDs provided'); // Throw error for invalid input
     }
     if (!fields || Object.keys(fields).length === 0) {
-        return { success: false, updatedCount: 0, error: 'No fields specified for update' };
+        throw new Error('No fields specified for update'); // Throw error
     }
 
     const validFields: (keyof typeof fields)[] = ['year', 'advertiser', 'niche', 'shares'];
     const setClauses: string[] = [];
-    const values: (string | number | null)[] = []; // More specific type
+    const values: (string | number | null)[] = [];
 
     for (const key in fields) {
-        // Use Object.prototype.hasOwnProperty.call for safety
         if (Object.prototype.hasOwnProperty.call(fields, key) && validFields.includes(key as keyof typeof fields)) {
              const value = fields[key as keyof typeof fields];
-             // Allow setting fields to null explicitly
              if (value !== undefined) {
                 setClauses.push(`${key} = ?`);
                 values.push(value);
@@ -345,32 +354,45 @@ export function bulkUpdateAssets(ids: number[], fields: Partial<Pick<Asset, 'yea
         }
     }
 
-
     if (setClauses.length === 0) {
-        // This might happen if fields contains only undefined values
-        return { success: false, updatedCount: 0, error: 'No valid fields or values provided for update' };
+        throw new Error('No valid fields or values provided for update'); // Throw error
     }
 
-    const placeholders = ids.map(() => '?').join(',');
-    const sql = `UPDATE assets SET ${setClauses.join(', ')} WHERE id IN (${placeholders})`;
+    // Process updates individually within a transaction to collect errors per ID
+    const transaction = db.transaction((assetIds: number[]) => {
+      const sqlBase = `UPDATE assets SET ${setClauses.join(', ')} WHERE id = ?`;
+      const stmt = db.prepare(sqlBase);
+      let successfulUpdates = 0;
 
-    const stmt = db.prepare(sql);
-
-    const transaction = db.transaction(() => {
-      const info = stmt.run(...values, ...ids);
-      // Also update FTS table
-      // Note: This requires fetching the updated data or ensuring FTS trigger handles NULL correctly
-      // For simplicity now, assume the trigger works. A more robust solution might re-index affected rows.
-      return { success: true, updatedCount: info.changes };
+      for (const id of assetIds) {
+          try {
+              const info = stmt.run(...values, id);
+              if (info.changes > 0) {
+                  successfulUpdates++;
+              } else {
+                  // Asset ID might not exist
+                  errors.push({ id, error: 'Asset ID not found or no change required.' });
+              }
+              // TODO: Handle FTS update trigger implicitly, or update manually if needed.
+          } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              errors.push({ id, error: message });
+              console.error(`Error updating asset ID ${id}:`, err);
+          }
+      }
+      return successfulUpdates;
     });
 
     try {
-      return transaction();
-    } catch (error) {
-      console.error('Error bulk updating assets:', error);
-      const message = error instanceof Error ? error.message : String(error);
-      return { success: false, updatedCount: 0, error: message };
-  }
+        updatedCount = transaction(ids);
+        // Return collected errors and count
+        return { updatedCount, errors };
+    } catch (error) { // Catch potential transaction-level errors (less likely here)
+        console.error('Error during bulk update transaction:', error);
+        // If the whole transaction fails, we might not have individual errors.
+        // Re-throw the main error. Individual errors are already collected.
+        throw error;
+    }
 }
 
 // TODO: Implement schema creation

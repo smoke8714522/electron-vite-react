@@ -76,50 +76,56 @@ export type GetVersionsResponse = ApiResponse<Asset[]>;
 // Types for create-version
 export interface CreateVersionPayload {
   masterId: number; // ID of the asset to version
-  filePath?: string; // Optional: path to a new file for this version
+  // filePath?: string; // Optional: path to a new file for this version - KEEP IF FILE HANDLING IS ADDED
 }
-export interface CreateVersionResult {
-  newAsset: Asset; // The newly created version asset details
-}
+// Response data matches DB function return
+export type CreateVersionResult = { id: number; version_no: number };
 export type CreateVersionResponse = ApiResponse<CreateVersionResult>;
 
 // Types for promote-version
 export interface PromoteVersionPayload {
   versionId: number; // ID of the version asset to promote to master
 }
-export type PromoteVersionResponse = ApiResponse<null>; // Success/fail indication
+// Response data is null for void DB function
+export type PromoteVersionResponse = ApiResponse<null>;
 
 // Types for remove-from-group (make version independent)
 export interface RemoveFromGroupPayload {
   versionId: number; // ID of the version asset to detach
 }
-export type RemoveFromGroupResponse = ApiResponse<null>; // Success/fail indication
+// Response data is null for void DB function
+export type RemoveFromGroupResponse = ApiResponse<null>;
 
 // Types for add-to-group (make one asset a version of another)
 export interface AddToGroupPayload {
   sourceId: number; // The asset ID being dragged (becomes the version)
   targetId: number; // The asset ID being dropped onto (becomes the master)
 }
-export type AddToGroupResponse = ApiResponse<null>; // Success/fail indication
+export type AddToGroupResponse = ApiResponse<null>; // Assuming void return or just success
 
-// --- Bulk Update --- New
+// --- Bulk Update --- 
+export interface BulkUpdateError { // Define the error type used by DB function
+    id: number;
+    error: string;
+}
 export interface BulkUpdatePayload {
     ids: number[];
     fields: Partial<Pick<Asset, 'year' | 'advertiser' | 'niche' | 'shares'>>; // Allow updating specific fields
 }
-export interface BulkUpdateResponse {
+// Response data matches DB function return
+export interface BulkUpdateResult {
     updatedCount: number;
+    errors: BulkUpdateError[];
 }
+export type BulkUpdateResponse = ApiResponse<BulkUpdateResult>;
 
-// --- Master Asset Search --- New
+// --- Master Asset Search --- 
 export interface GetMasterAssetsPayload {
     searchTerm?: string;
 }
-export interface GetMasterAssetsResponse {
-    assets: Pick<Asset, 'id' | 'path'>[]; // Return only necessary fields
-}
+export type GetMasterAssetsResponse = ApiResponse<Pick<Asset, 'id' | 'path'>[]>; // Use ApiResponse
 
-// --- File Dialog --- New
+// --- File Dialog --- 
 export interface OpenFileDialogResponse {
   filePaths?: string[]; // Array of selected file paths
   canceled: boolean;
@@ -137,26 +143,24 @@ export interface IElectronAPI {
   bulkImportAssets: () => Promise<BulkImportAssetsResponse>;
   getThumbnailUrl: (assetId: number) => string;
   
-  // Bulk Operations
-  bulkUpdateAssets: (payload: BulkUpdatePayload) => Promise<ApiResponse<BulkUpdateResponse>>;
+  // Bulk Operations - Ensure signature matches updated response type
+  bulkUpdateAssets: (payload: BulkUpdatePayload) => Promise<BulkUpdateResponse>; 
   
   // Add method for subscribing to view changes from main process menu
   // Takes a callback and returns a cleanup function
   onViewChange: (callback: (viewName: string) => void) => (() => void);
   
-  // --- Versioning and Grouping API ---
+  // --- Versioning and Grouping API - Update Signatures --- 
   getVersions: (payload: GetVersionsPayload) => Promise<GetVersionsResponse>;
   createVersion: (payload: CreateVersionPayload) => Promise<CreateVersionResponse>;
   promoteVersion: (payload: PromoteVersionPayload) => Promise<PromoteVersionResponse>;
   removeFromGroup: (payload: RemoveFromGroupPayload) => Promise<RemoveFromGroupResponse>;
   addToGroup: (payload: AddToGroupPayload) => Promise<AddToGroupResponse>;
-  getMasterAssets: (payload: GetMasterAssetsPayload) => Promise<ApiResponse<GetMasterAssetsResponse>>;
+  getMasterAssets: (payload: GetMasterAssetsPayload) => Promise<GetMasterAssetsResponse>; 
   // --- END Versioning and Grouping API ---
   
   // System / File Dialogs
-  showOpenDialog: () => Promise<OpenFileDialogResponse>;
-  
-  // Add other API methods here
+  showOpenDialog: () => Promise<OpenFileDialogResponse>; // Ensure return type is just the object, not ApiResponse
 }
 
 declare global {
